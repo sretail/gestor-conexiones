@@ -464,10 +464,19 @@ export default function ConnectionManagerApp() {
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mx-auto flex w-full max-w-7xl flex-col gap-5">
         <header className="flex w-full flex-col gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-5 shadow-2xl shadow-cyan-950/30 backdrop-blur sm:p-6 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
-            <h1 className="break-words bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">Gestor de conexiones a máquinas</h1>
-            <p className="mt-2 text-sm text-slate-400 sm:text-base">CRUD de clientes y configuraciones VPN, SAP, OSS y Fiori. Guardado local automático activado.</p>
+          
+          <div className="flex min-w-0 items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="Logo Gestor de conexiones SAP"
+              className="h-10 w-10 shrink-0 rounded-xl object-contain"
+            />
+
+            <h1 className="break-words bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">
+              Gestor de conexiones SAP
+            </h1>
           </div>
+
           <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto xl:justify-end">
             <Button variant="outline" onClick={exportAll} className={`${secondaryButtonClass} w-full sm:w-auto`}><Download className="mr-2 h-4 w-4" /> Exportar todo</Button>
             <Button variant="outline" onClick={() => importAllInputRef.current?.click()} className={`${secondaryButtonClass} w-full sm:w-auto`}><Upload className="mr-2 h-4 w-4" /> Importar todo</Button>
@@ -574,6 +583,13 @@ export default function ConnectionManagerApp() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      <footer className="mx-auto mt-8 max-w-7xl pb-4 text-center text-xs text-slate-500">
+        Desarrollado por Alfredo Pradas. Todos los derechos reservados.
+      </footer>
+
     </div>
+
+
   );
 }
