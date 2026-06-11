@@ -1,14 +1,17 @@
-import React, { useMemo, useRef, useState } from "react";
+
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent, CardHeader, CardTitle } from "./components/ui/card";
-import { Button } from "./components/ui/button";
-import { Input } from "./components/ui/input";
-import { Label } from "./components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select";
-import { Badge } from "./components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, Download, Upload } from "lucide-react";
+
+const STORAGE_KEY = "gestor_conexiones_clients_v1";
 
 const CONNECTION_TYPES = ["VPN", "SAP", "OSS", "Fiori"];
 const FIORI_ENVIRONMENTS = ["DES", "QA", "PRD"];
@@ -121,6 +124,20 @@ function ensureClient(client) {
     name: client?.name || "Cliente importado",
     configs: Array.isArray(client?.configs) ? client.configs.map(ensureConfig) : [],
   };
+}
+
+function loadClientsFromLocalStorage() {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    if (!saved) return initialClients;
+
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length === 0) return initialClients;
+
+    return parsed.map(ensureClient);
+  } catch {
+    return initialClients;
+  }
 }
 
 function validateConfig(type, form) {
@@ -256,8 +273,8 @@ function ConfigDetails({ config }) {
 }
 
 export default function ConnectionManagerApp() {
-  const [clients, setClients] = useState(initialClients);
-  const [selectedClientId, setSelectedClientId] = useState(initialClients[0].id);
+  const [clients, setClients] = useState(loadClientsFromLocalStorage);
+  const [selectedClientId, setSelectedClientId] = useState(null);
   const [clientName, setClientName] = useState("");
   const [search, setSearch] = useState("");
   const [activeType, setActiveType] = useState("Todos");
@@ -271,6 +288,22 @@ export default function ConnectionManagerApp() {
 
   const importAllInputRef = useRef(null);
   const importClientInputRef = useRef(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+    } catch {
+      setImportError("No se han podido guardar los datos en localStorage.");
+    }
+  }, [clients]);
+
+  useEffect(() => {
+    if (!clients.length) return;
+    const exists = clients.some((client) => client.id === selectedClientId);
+    if (!selectedClientId || !exists) {
+      setSelectedClientId(clients[0].id);
+    }
+  }, [clients, selectedClientId]);
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || clients[0];
 
@@ -312,9 +345,7 @@ export default function ConnectionManagerApp() {
       });
       setExportInfo("Exportación completada correctamente.");
     } catch (error) {
-      if (error?.name !== "AbortError") {
-        setImportError("No se ha podido exportar el archivo JSON.");
-      }
+      if (error?.name !== "AbortError") setImportError("No se ha podido exportar el archivo JSON.");
     }
   };
 
@@ -331,9 +362,7 @@ export default function ConnectionManagerApp() {
       });
       setExportInfo("Exportación del cliente completada correctamente.");
     } catch (error) {
-      if (error?.name !== "AbortError") {
-        setImportError("No se ha podido exportar el archivo JSON del cliente.");
-      }
+      if (error?.name !== "AbortError") setImportError("No se ha podido exportar el archivo JSON del cliente.");
     }
   };
 
@@ -356,17 +385,11 @@ export default function ConnectionManagerApp() {
 
   const importAll = (file) => {
     readJsonFile(file, (data) => {
-      const importedClients = Array.isArray(data?.clients)
-        ? data.clients
-        : Array.isArray(data)
-          ? data
-          : [];
-
+      const importedClients = Array.isArray(data?.clients) ? data.clients : Array.isArray(data) ? data : [];
       if (!importedClients.length) {
         setImportError("El JSON no contiene una lista de clientes válida.");
         return;
       }
-
       const normalizedClients = importedClients.map(ensureClient);
       setClients(normalizedClients);
       setSelectedClientId(normalizedClients[0].id);
@@ -377,23 +400,13 @@ export default function ConnectionManagerApp() {
 
   const importSelectedClient = (file) => {
     readJsonFile(file, (data) => {
-      const importedConfigs = Array.isArray(data?.client?.configs)
-        ? data.client.configs
-        : Array.isArray(data?.configs)
-          ? data.configs
-          : [];
-
+      const importedConfigs = Array.isArray(data?.client?.configs) ? data.client.configs : Array.isArray(data?.configs) ? data.configs : [];
       if (!importedConfigs.length && !Array.isArray(data?.client?.configs) && !Array.isArray(data?.configs)) {
         setImportError("El JSON no contiene configuraciones válidas para un cliente.");
         return;
       }
-
       const normalizedConfigs = importedConfigs.map(ensureConfig);
-      setClients((prev) => prev.map((client) => (
-        client.id === selectedClientId
-          ? { ...client, configs: normalizedConfigs }
-          : client
-      )));
+      setClients((prev) => prev.map((client) => client.id === selectedClientId ? { ...client, configs: normalizedConfigs } : client));
       setActiveType("Todos");
       setSearch("");
     });
@@ -432,10 +445,7 @@ export default function ConnectionManagerApp() {
     setClients((prev) => prev.map((client) => {
       if (client.id !== selectedClientId) return client;
       if (editingConfig) {
-        return {
-          ...client,
-          configs: client.configs.map((config) => config.id === editingConfig.id ? { id: config.id, type: selectedType, ...form } : config),
-        };
+        return { ...client, configs: client.configs.map((config) => config.id === editingConfig.id ? { id: config.id, type: selectedType, ...form } : config) };
       }
       return { ...client, configs: [...client.configs, { id: crypto.randomUUID(), type: selectedType, ...form }] };
     }));
@@ -444,11 +454,7 @@ export default function ConnectionManagerApp() {
   };
 
   const deleteConfig = (configId) => {
-    setClients((prev) => prev.map((client) => (
-      client.id === selectedClientId
-        ? { ...client, configs: client.configs.filter((config) => config.id !== configId) }
-        : client
-    )));
+    setClients((prev) => prev.map((client) => client.id === selectedClientId ? { ...client, configs: client.configs.filter((config) => config.id !== configId) } : client));
   };
 
   return (
@@ -460,18 +466,12 @@ export default function ConnectionManagerApp() {
         <header className="flex w-full flex-col gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-5 shadow-2xl shadow-cyan-950/30 backdrop-blur sm:p-6 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">
             <h1 className="break-words bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">Gestor de conexiones a máquinas</h1>
-            <p className="mt-2 text-sm text-slate-400 sm:text-base">CRUD de clientes y configuraciones VPN, SAP, OSS y Fiori.</p>
+            <p className="mt-2 text-sm text-slate-400 sm:text-base">CRUD de clientes y configuraciones VPN, SAP, OSS y Fiori. Guardado local automático activado.</p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row xl:w-auto xl:justify-end">
-            <Button variant="outline" onClick={exportAll} className={`${secondaryButtonClass} w-full sm:w-auto`}>
-              <Download className="mr-2 h-4 w-4" /> Exportar todo
-            </Button>
-            <Button variant="outline" onClick={() => importAllInputRef.current?.click()} className={`${secondaryButtonClass} w-full sm:w-auto`}>
-              <Upload className="mr-2 h-4 w-4" /> Importar todo
-            </Button>
-            <Button onClick={openCreateDialog} className="w-full rounded-2xl bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-950/30 hover:bg-cyan-400 sm:w-auto" disabled={!selectedClient}>
-              <Plus className="mr-2 h-4 w-4" /> Nueva configuración
-            </Button>
+            <Button variant="outline" onClick={exportAll} className={`${secondaryButtonClass} w-full sm:w-auto`}><Download className="mr-2 h-4 w-4" /> Exportar todo</Button>
+            <Button variant="outline" onClick={() => importAllInputRef.current?.click()} className={`${secondaryButtonClass} w-full sm:w-auto`}><Upload className="mr-2 h-4 w-4" /> Importar todo</Button>
+            <Button onClick={openCreateDialog} className="w-full rounded-2xl bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-950/30 hover:bg-cyan-400 sm:w-auto" disabled={!selectedClient}><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>
           </div>
         </header>
 
@@ -480,15 +480,12 @@ export default function ConnectionManagerApp() {
 
         <main className="grid w-full grid-cols-1 gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
           <Card className={`${cardClass} min-w-0`}>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-lg text-cyan-200"><Building2 className="h-5 w-5" /> Clientes</CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg text-cyan-200"><Building2 className="h-5 w-5" /> Clientes</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="flex min-w-0 gap-2">
                 <Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nombre cliente" onKeyDown={(e) => e.key === "Enter" && addClient()} className={inputClass} />
                 <Button onClick={addClient} className="shrink-0 rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"><Plus className="h-4 w-4" /></Button>
               </div>
-
               <div className="space-y-2">
                 {clients.map((client) => (
                   <div key={client.id} className={`flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selectedClientId === client.id ? "border-cyan-400/40 bg-cyan-400/10 shadow-sm" : "border-white/10 bg-slate-950/40 hover:bg-slate-800/70"}`}>
@@ -509,12 +506,8 @@ export default function ConnectionManagerApp() {
                 <div className="min-w-0">
                   <CardTitle className="min-w-0 break-words text-lg text-cyan-200 sm:text-xl">Configuraciones de {selectedClient?.name}</CardTitle>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <Button variant="outline" size="sm" onClick={exportSelectedClient} className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={!selectedClient}>
-                      <Download className="mr-2 h-4 w-4" /> Exportar cliente
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => importClientInputRef.current?.click()} className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={!selectedClient}>
-                      <Upload className="mr-2 h-4 w-4" /> Importar cliente
-                    </Button>
+                    <Button variant="outline" size="sm" onClick={exportSelectedClient} className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={!selectedClient}><Download className="mr-2 h-4 w-4" /> Exportar cliente</Button>
+                    <Button variant="outline" size="sm" onClick={() => importClientInputRef.current?.click()} className={`${secondaryButtonClass} w-full sm:w-auto`} disabled={!selectedClient}><Upload className="mr-2 h-4 w-4" /> Importar cliente</Button>
                   </div>
                 </div>
                 <div className="relative w-full xl:max-w-sm">
@@ -526,8 +519,7 @@ export default function ConnectionManagerApp() {
                 <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl bg-slate-950/60 p-1">
                   {["Todos", ...CONNECTION_TYPES].map((type) => (
                     <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-slate-300 data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950">
-                      {type !== "Todos" && <span className="mr-2">{typeIcon(type)}</span>}
-                      {type}
+                      {type !== "Todos" && <span className="mr-2">{typeIcon(type)}</span>}{type}
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -565,29 +557,17 @@ export default function ConnectionManagerApp() {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-3xl border-white/10 bg-slate-900 text-slate-100 shadow-2xl shadow-slate-950">
-          <DialogHeader>
-            <DialogTitle className="text-cyan-200">{editingConfig ? "Modificar configuración" : "Crear configuración"}</DialogTitle>
-          </DialogHeader>
-
+          <DialogHeader><DialogTitle className="text-cyan-200">{editingConfig ? "Modificar configuración" : "Crear configuración"}</DialogTitle></DialogHeader>
           <div className="space-y-5">
             <Field label="Tipo de conexión">
               <Select value={selectedType} onValueChange={onTypeChange} disabled={Boolean(editingConfig)}>
                 <SelectTrigger className="h-10 rounded-xl border-slate-700 bg-slate-950/70 text-slate-100 focus:ring-cyan-500"><SelectValue /></SelectTrigger>
-                <SelectContent className="border-slate-700 bg-slate-900 text-slate-100">
-                  {CONNECTION_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}
-                </SelectContent>
+                <SelectContent className="border-slate-700 bg-slate-900 text-slate-100">{CONNECTION_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
-
             <ConfigForm type={selectedType} form={form} setForm={setForm} />
-
-            {errors.length > 0 && (
-              <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
-                <ul className="list-inside list-disc">{errors.map((error) => <li key={error}>{error}</li>)}</ul>
-              </div>
-            )}
+            {errors.length > 0 && <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200"><ul className="list-inside list-disc">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
           </div>
-
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800">Cancelar</Button>
             <Button onClick={saveConfig} className="rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400">Guardar</Button>
