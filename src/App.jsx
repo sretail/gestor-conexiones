@@ -487,43 +487,146 @@ function ConfigDetails({ config }) {
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const login = async () => {
     setAuthError("");
     setAuthMessage("");
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
     setLoading(false);
-    if (error) setAuthError(error.message);
+
+    if (error) {
+      setAuthError(error.message);
+    }
   };
 
   const register = async () => {
     setAuthError("");
     setAuthMessage("");
     setLoading(true);
-    const { error } = await supabase.auth.signUp({ email, password });
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
     setLoading(false);
-    if (error) setAuthError(error.message);
-    else setAuthMessage("Usuario creado. Revisa tu email si Supabase pide confirmación.");
+
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthMessage("Usuario creado. Revisa tu email si Supabase pide confirmación.");
+    }
+  };
+
+  const resetPassword = async () => {
+    setAuthError("");
+    setAuthMessage("");
+
+    if (!email.trim()) {
+      setAuthError("Introduce tu email para poder recuperar la contraseña.");
+      return;
+    }
+
+    setResetLoading(true);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    });
+
+    setResetLoading(false);
+
+    if (error) {
+      setAuthError(error.message);
+    } else {
+      setAuthMessage("Te hemos enviado un email para restablecer tu contraseña.");
+    }
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-4 text-slate-100">
       <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/50">
-        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">SAP Connectivity Manager</h1>
-        <p className="mb-6 text-sm text-slate-400">Inicia sesión para acceder a la aplicación.</p>
+        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">
+          SAP Connectivity Manager
+        </h1>
+
+        <p className="mb-6 text-sm text-slate-400">
+          Inicia sesión para acceder a la aplicación.
+        </p>
+
         <div className="space-y-4">
-          <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@dominio.com" className={inputClass} /></Field>
-          <Field label="Password"><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Contraseña" className={inputClass} onKeyDown={(e) => { if (e.key === "Enter") login(); }} /></Field>
-          {authError && <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{authError}</div>}
-          {authMessage && <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{authMessage}</div>}
+          <Field label="Email">
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="usuario@dominio.com"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Password">
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Contraseña"
+              className={inputClass}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") login();
+              }}
+            />
+          </Field>
+
+          {authError && (
+            <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {authError}
+            </div>
+          )}
+
+          {authMessage && (
+            <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+              {authMessage}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Button onClick={login} disabled={loading} className="w-full rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400">{loading ? "Validando..." : "Entrar"}</Button>
-            <Button variant="outline" onClick={register} disabled={loading} className="w-full rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800">Registrarse</Button>
+            <Button
+              onClick={login}
+              disabled={loading}
+              className="w-full rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            >
+              {loading ? "Validando..." : "Entrar"}
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={register}
+              disabled={loading}
+              className="w-full rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800"
+            >
+              Registrarse
+            </Button>
           </div>
+
+          <button
+            type="button"
+            onClick={resetPassword}
+            disabled={resetLoading}
+            className="w-full text-center text-sm text-cyan-300 transition hover:text-cyan-200 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {resetLoading ? "Enviando email..." : "¿Has olvidado tu contraseña?"}
+          </button>
         </div>
       </div>
     </div>
@@ -546,7 +649,11 @@ export default function ConnectionManagerApp() {
   const [errors, setErrors] = useState([]);
   const [appError, setAppError] = useState("");
   const [exportInfo, setExportInfo] = useState("");
-
+const [passwordRecovery, setPasswordRecovery] = useState(false);
+const [newPassword, setNewPassword] = useState("");
+const [recoveryError, setRecoveryError] = useState("");
+const [recoveryMessage, setRecoveryMessage] = useState("");
+const [recoveryLoading, setRecoveryLoading] = useState(false);
   const importAllInputRef = useRef(null);
   const importClientInputRef = useRef(null);
 
@@ -556,14 +663,56 @@ export default function ConnectionManagerApp() {
       setAuthLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setAuthLoading(false);
-      if (!nextSession) {
-        setClients([]);
-        setSelectedClientId(null);
-      }
-    });
+const updateRecoveredPassword = async () => {
+  setRecoveryError("");
+  setRecoveryMessage("");
+
+  if (!newPassword.trim()) {
+    setRecoveryError("Introduce la nueva contraseña.");
+    return;
+  }
+
+  if (newPassword.trim().length < 6) {
+    setRecoveryError("La contraseña debe tener al menos 6 caracteres.");
+    return;
+  }
+
+  setRecoveryLoading(true);
+
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword.trim(),
+  });
+
+  setRecoveryLoading(false);
+
+  if (error) {
+    setRecoveryError(error.message);
+    return;
+  }
+
+  setRecoveryMessage("Contraseña actualizada correctamente.");
+  setNewPassword("");
+
+  window.setTimeout(() => {
+    setPasswordRecovery(false);
+    setRecoveryMessage("");
+  }, 1200);
+};
+
+const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+  setSession(nextSession);
+  setAuthLoading(false);
+
+  if (event === "PASSWORD_RECOVERY") {
+    setPasswordRecovery(true);
+  }
+
+  if (!nextSession) {
+    setClients([]);
+    setSelectedClientId(null);
+  }
+});
+
 
     return () => listener.subscription.unsubscribe();
   }, []);
@@ -844,6 +993,73 @@ export default function ConnectionManagerApp() {
       setAppError(error.message);
     }
   };
+
+
+if (passwordRecovery) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-4 text-slate-100">
+      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/50">
+        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">
+          Nueva contraseña
+        </h1>
+
+        <p className="mb-6 text-sm text-slate-400">
+          Introduce tu nueva contraseña para completar la recuperación.
+        </p>
+
+        <Field label="Nueva contraseña">
+          <Input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Nueva contraseña"
+            className={inputClass}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") updateRecoveredPassword();
+            }}
+          />
+        </Field>
+
+        {recoveryError && (
+          <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
+            {recoveryError}
+          </div>
+        )}
+
+        {recoveryMessage && (
+          <div className="mt-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+            {recoveryMessage}
+          </div>
+        )}
+
+        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Button
+            onClick={updateRecoveredPassword}
+            disabled={recoveryLoading}
+            className="w-full rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+          >
+            {recoveryLoading ? "Guardando..." : "Actualizar"}
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => {
+              setPasswordRecovery(false);
+              setNewPassword("");
+              setRecoveryError("");
+              setRecoveryMessage("");
+            }}
+            className="w-full rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800"
+          >
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 
   if (authLoading) {
     return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">Cargando sesión...</div>;
