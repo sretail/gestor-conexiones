@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, Download, Upload, LogOut, Copy, Check } from "lucide-react";
+import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, Download, Upload, LogOut, Copy, Check, Mail } from "lucide-react";
 
 const CONNECTION_TYPES = ["VPN", "SAP", "OSS", "Fiori"];
 const FIORI_ENVIRONMENTS = ["DES", "QA", "PRD"];
 const CLIENTS_TABLE = "connection_clients";
+const CRYPTO_FUNCTION = "crypto-config";
 
 const emptyForms = {
   VPN: { vpnName: "", user: "", password: "" },
@@ -32,7 +33,6 @@ const emptyForms = {
 
 const inputClass = "h-10 w-full rounded-xl border-slate-700 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-500";
 const cardClass = "rounded-3xl border border-white/10 bg-slate-900/75 text-slate-100 shadow-2xl shadow-slate-950/40 backdrop-blur";
-const secondaryButtonClass = "rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800";
 const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800";
 
 function typeIcon(type) {
@@ -50,8 +50,13 @@ function typeBadgeClass(type) {
   return "border-violet-400/30 bg-violet-400/10 text-violet-300";
 }
 
+function isEncryptedValue(value) {
+  return Boolean(value && typeof value === "object" && value.__encrypted);
+}
+
 function maskPassword(value) {
   if (!value) return "—";
+  if (isEncryptedValue(value)) return "••••••••";
   return "•".repeat(Math.min(String(value).length, 10));
 }
 
@@ -64,9 +69,45 @@ function sanitizeFileName(value) {
     .replace(/^-|-$/g, "") || "export";
 }
 
+async function invokeCryptoFunction(action, configs) {
+  const { data, error } = await supabase.functions.invoke(CRYPTO_FUNCTION, {
+    body: {
+      action,
+      configs: configs || [],
+    },
+  });
+
+  if (error) {
+    throw new Error(error.message || "Error llamando a la Edge Function de cifrado.");
+  }
+
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+
+  return data?.configs || [];
+}
+
+async function encryptConfigs(configs) {
+  return invokeCryptoFunction("encryptConfigs", configs);
+}
+
+async function decryptConfigs(configs) {
+  return invokeCryptoFunction("decryptConfigs", configs);
+}
+
+async function encryptClientsForExport(clients) {
+  return Promise.all(
+    (clients || []).map(async (client) => ({
+      ...client,
+      configs: await encryptConfigs(client.configs),
+    }))
+  );
+}
+
 function CopyButton({ value, label = "Copiar" }) {
   const [copied, setCopied] = useState(false);
-  const copyValue = value === undefined || value === null ? "" : String(value);
+  const copyValue = value === undefined || value === null || isEncryptedValue(value) ? "" : String(value);
 
   const copyToClipboard = async () => {
     if (!copyValue) return;
@@ -185,6 +226,84 @@ function validateConfig(type, form) {
   return errors;
 }
 
+function formatPasswordForEmail(value) {
+  return value ? maskPassword(value) : "—";
+}
+
+function formatClientForEmail(client) {
+  if (!client) return "";
+
+  const lines = [];
+  lines.push("SAP CONNECTIVITY MANAGER");
+  lines.push("==============================================");
+  lines.push("");
+  lines.push(`Cliente: ${client.name}`);
+  lines.push("");
+  lines.push("Configuraciones del cliente");
+  lines.push("----------------------------------------------");
+
+  if (!client.configs || client.configs.length === 0) {
+    lines.push("");
+    lines.push("No hay configuraciones registradas para este cliente.");
+  }
+
+  (client.configs || []).forEach((config, index) => {
+    lines.push("");
+    lines.push(`CONFIGURACIÓN ${index + 1}`);
+    lines.push("──────────────────────────────────────────────");
+    lines.push(`Tipo: ${config.type || "—"}`);
+
+    if (config.type === "VPN") {
+      lines.push(`Nombre VPN: ${config.vpnName || "—"}`);
+      lines.push(`Usuario: ${config.user || "—"}`);
+      lines.push(`Password: ${formatPasswordForEmail(config.password)}`);
+    }
+
+    if (config.type === "SAP") {
+      lines.push(`Descripción: ${config.description || "—"}`);
+      lines.push(`ID Sistema: ${config.systemId || "—"}`);
+      lines.push(`Número de instancia: ${config.instanceNumber || "—"}`);
+      lines.push(`Servidor de aplicación: ${config.applicationServer || "—"}`);
+      lines.push(`Saprouter: ${config.saprouter || "—"}`);
+      lines.push("");
+      lines.push("Usuarios SAP:");
+
+      if (Array.isArray(config.sapCredentials) && config.sapCredentials.length > 0) {
+        config.sapCredentials.forEach((credential, credIndex) => {
+          lines.push(`  ${credIndex + 1}. Usuario: ${credential.user || "—"}`);
+          lines.push(`     Password: ${formatPasswordForEmail(credential.password)}`);
+        });
+      } else {
+        lines.push("  —");
+      }
+    }
+
+    if (config.type === "OSS") {
+      lines.push(`Usuario: ${config.user || "—"}`);
+      lines.push(`Password: ${formatPasswordForEmail(config.password)}`);
+    }
+
+    if (config.type === "Fiori") {
+      lines.push(`Entorno: ${config.environment || "—"}`);
+      lines.push(`URL: ${config.url || "—"}`);
+    }
+
+    lines.push("──────────────────────────────────────────────");
+  });
+
+  lines.push("");
+  lines.push("Saludos,");
+  lines.push("Alfredo Pradas");
+  return lines.join("\n");
+}
+
+function shareClientByEmail(client) {
+  if (!client) return;
+  const subject = `Configuraciones de conexión - ${client.name}`;
+  const body = formatClientForEmail(client);
+  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 function Field({ label, children }) {
   return (
     <div className="min-w-0 space-y-2">
@@ -196,16 +315,12 @@ function Field({ label, children }) {
 
 function ConfigForm({ type, form, setForm }) {
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
-
   const sapCredentials = Array.isArray(form.sapCredentials) ? form.sapCredentials : [];
 
   const addSapCredential = () => {
     setForm((prev) => ({
       ...prev,
-      sapCredentials: [
-        ...(Array.isArray(prev.sapCredentials) ? prev.sapCredentials : []),
-        { id: crypto.randomUUID(), user: "", password: "" },
-      ],
+      sapCredentials: [...(Array.isArray(prev.sapCredentials) ? prev.sapCredentials : []), { id: crypto.randomUUID(), user: "", password: "" }],
     }));
   };
 
@@ -262,12 +377,8 @@ function ConfigForm({ type, form, setForm }) {
               <div className="space-y-3">
                 {sapCredentials.map((credential, index) => (
                   <div key={credential.id} className="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                    <Field label={`Usuario ${index + 1}`}>
-                      <Input value={credential.user || ""} onChange={(e) => updateSapCredential(credential.id, "user", e.target.value)} placeholder="usuario SAP" className={inputClass} />
-                    </Field>
-                    <Field label="Password">
-                      <Input type="password" value={credential.password || ""} onChange={(e) => updateSapCredential(credential.id, "password", e.target.value)} placeholder="••••••••" className={inputClass} />
-                    </Field>
+                    <Field label={`Usuario ${index + 1}`}><Input value={credential.user || ""} onChange={(e) => updateSapCredential(credential.id, "user", e.target.value)} placeholder="usuario SAP" className={inputClass} /></Field>
+                    <Field label="Password"><Input type="password" value={credential.password || ""} onChange={(e) => updateSapCredential(credential.id, "password", e.target.value)} placeholder="••••••••" className={inputClass} /></Field>
                     <Button type="button" variant="outline" size="sm" onClick={() => deleteSapCredential(credential.id)} className="rounded-xl border-red-400/40 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-200">
                       <Trash2 className="mr-2 h-4 w-4" /> Borrar
                     </Button>
@@ -341,22 +452,12 @@ function ConfigDetails({ config }) {
             <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {config.sapCredentials.map((credential, index) => (
                 <div key={credential.id || index} className="rounded-xl border border-white/10 bg-slate-900/50 p-3 text-sm">
-                  <div className="flex min-w-0 items-center gap-1">
-                    <span className="font-semibold text-slate-100">Usuario:</span>
-                    <span className="min-w-0 break-words text-slate-300">{credential.user || "—"}</span>
-                    <CopyButton value={credential.user} />
-                  </div>
-                  <div className="flex min-w-0 items-center gap-1">
-                    <span className="font-semibold text-slate-100">Password:</span>
-                    <span className="min-w-0 break-words text-slate-300">{maskPassword(credential.password)}</span>
-                    <CopyButton value={credential.password} />
-                  </div>
+                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-slate-100">Usuario:</span><span className="min-w-0 break-words text-slate-300">{credential.user || "—"}</span><CopyButton value={credential.user} /></div>
+                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-slate-100">Password:</span><span className="min-w-0 break-words text-slate-300">{maskPassword(credential.password)}</span><CopyButton value={credential.password} /></div>
                 </div>
               ))}
             </div>
-          ) : (
-            <span className="text-slate-300">—</span>
-          )}
+          ) : <span className="text-slate-300">—</span>}
         </div>
       </div>
     );
@@ -375,9 +476,7 @@ function ConfigDetails({ config }) {
     <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-2 text-sm text-slate-300">
       <span className="inline-flex items-center gap-1"><b className="text-slate-100">Entorno:</b> {config.environment}<CopyButton value={config.environment} /></span>
       <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg px-2 py-1 text-cyan-300 hover:bg-cyan-400/10">
-        <button className="min-w-0" onClick={() => window.open(config.url, "_blank", "noopener,noreferrer")}>
-          <span className="break-all">{config.url}</span>
-        </button>
+        <button className="min-w-0" onClick={() => window.open(config.url, "_blank", "noopener,noreferrer")}><span className="break-all">{config.url}</span></button>
         <ExternalLink className="h-3.5 w-3.5 shrink-0" />
         <CopyButton value={config.url} />
       </span>
@@ -414,7 +513,7 @@ function LoginScreen() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-4 text-slate-100">
       <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/50">
-        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">Gestor de conexiones SAP</h1>
+        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">SAP Connectivity Manager</h1>
         <p className="mb-6 text-sm text-slate-400">Inicia sesión para acceder a la aplicación.</p>
         <div className="space-y-4">
           <Field label="Email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="usuario@dominio.com" className={inputClass} /></Field>
@@ -457,10 +556,10 @@ export default function ConnectionManagerApp() {
       setAuthLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
       setAuthLoading(false);
-      if (!session) {
+      if (!nextSession) {
         setClients([]);
         setSelectedClientId(null);
       }
@@ -474,28 +573,36 @@ export default function ConnectionManagerApp() {
     setDataLoading(true);
     setAppError("");
 
-    const { data, error } = await supabase
-      .from(CLIENTS_TABLE)
-      .select("id,name,configs,created_at,updated_at")
-      .order("created_at", { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from(CLIENTS_TABLE)
+        .select("id,name,configs,created_at,updated_at")
+        .order("created_at", { ascending: true });
 
-    setDataLoading(false);
+      if (error) throw error;
 
-    if (error) {
+      const loadedClients = await Promise.all(
+        (data || []).map(async (row) => {
+          const client = mapDbClient(row);
+          return { ...client, configs: await decryptConfigs(client.configs) };
+        })
+      );
+
+      setClients(loadedClients);
+      setSelectedClientId((current) => loadedClients.some((client) => client.id === current) ? current : loadedClients[0]?.id || null);
+    } catch (error) {
       setAppError(error.message);
-      return;
+      setClients([]);
+      setSelectedClientId(null);
+    } finally {
+      setDataLoading(false);
     }
-
-    const loadedClients = (data || []).map(mapDbClient);
-    setClients(loadedClients);
-    setSelectedClientId((current) => {
-      if (loadedClients.some((client) => client.id === current)) return current;
-      return loadedClients[0]?.id || null;
-    });
   };
 
   useEffect(() => {
-    if (session?.user?.id) loadClients();
+    if (session?.user?.id) {
+      loadClients();
+    }
   }, [session?.user?.id]);
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || clients[0];
@@ -510,26 +617,28 @@ export default function ConnectionManagerApp() {
   }, [selectedClient, activeType, search]);
 
   const insertClient = async (client) => {
+    const encryptedConfigs = await encryptConfigs(client.configs);
     const { data, error } = await supabase
       .from(CLIENTS_TABLE)
-      .insert({ name: client.name, configs: client.configs })
+      .insert({ name: client.name, configs: encryptedConfigs })
       .select("id,name,configs")
       .single();
 
     if (error) throw error;
-    return mapDbClient(data);
+    return { ...mapDbClient(data), configs: client.configs };
   };
 
   const updateClientConfigs = async (clientId, configs) => {
+    const encryptedConfigs = await encryptConfigs(configs);
     const { data, error } = await supabase
       .from(CLIENTS_TABLE)
-      .update({ configs, updated_at: new Date().toISOString() })
+      .update({ configs: encryptedConfigs, updated_at: new Date().toISOString() })
       .eq("id", clientId)
       .select("id,name,configs")
       .single();
 
     if (error) throw error;
-    return mapDbClient(data);
+    return { ...mapDbClient(data), configs };
   };
 
   const addClient = async () => {
@@ -565,15 +674,17 @@ export default function ConnectionManagerApp() {
     setAppError("");
     setExportInfo("");
     try {
-      await saveJsonFile(`conexiones-todas-${new Date().toISOString().slice(0, 10)}.json`, {
-        version: 1,
+      const encryptedClients = await encryptClientsForExport(clients);
+      await saveJsonFile(`conexiones-cifradas-todas-${new Date().toISOString().slice(0, 10)}.json`, {
+        version: 2,
+        encrypted: true,
         scope: "all",
         exportedAt: new Date().toISOString(),
-        clients,
+        clients: encryptedClients,
       });
-      setExportInfo("Exportación completada correctamente.");
+      setExportInfo("Exportación cifrada completada correctamente.");
     } catch (error) {
-      if (error?.name !== "AbortError") setAppError("No se ha podido exportar el archivo JSON.");
+      if (error?.name !== "AbortError") setAppError("No se ha podido exportar el archivo JSON cifrado.");
     }
   };
 
@@ -582,15 +693,17 @@ export default function ConnectionManagerApp() {
     setAppError("");
     setExportInfo("");
     try {
-      await saveJsonFile(`conexiones-${sanitizeFileName(selectedClient.name)}-${new Date().toISOString().slice(0, 10)}.json`, {
-        version: 1,
+      const encryptedConfigs = await encryptConfigs(selectedClient.configs);
+      await saveJsonFile(`conexiones-cifradas-${sanitizeFileName(selectedClient.name)}-${new Date().toISOString().slice(0, 10)}.json`, {
+        version: 2,
+        encrypted: true,
         scope: "client",
         exportedAt: new Date().toISOString(),
-        client: selectedClient,
+        client: { ...selectedClient, configs: encryptedConfigs },
       });
-      setExportInfo("Exportación del cliente completada correctamente.");
+      setExportInfo("Exportación cifrada del cliente completada correctamente.");
     } catch (error) {
-      if (error?.name !== "AbortError") setAppError("No se ha podido exportar el archivo JSON del cliente.");
+      if (error?.name !== "AbortError") setAppError("No se ha podido exportar el archivo JSON cifrado del cliente.");
     }
   };
 
@@ -620,7 +733,13 @@ export default function ConnectionManagerApp() {
       }
 
       try {
-        const normalizedClients = importedClients.map(ensureClient).map(({ name, configs }) => ({ name, configs }));
+        const normalizedClients = await Promise.all(
+          importedClients.map(async (client) => {
+            const normalizedClient = ensureClient(client);
+            return { name: normalizedClient.name, configs: await encryptConfigs(normalizedClient.configs) };
+          })
+        );
+
         const { error: deleteError } = await supabase.from(CLIENTS_TABLE).delete().neq("id", "00000000-0000-0000-0000-000000000000");
         if (deleteError) throw deleteError;
 
@@ -628,9 +747,16 @@ export default function ConnectionManagerApp() {
           .from(CLIENTS_TABLE)
           .insert(normalizedClients)
           .select("id,name,configs,created_at");
+
         if (insertError) throw insertError;
 
-        const loadedClients = (inserted || []).map(mapDbClient);
+        const loadedClients = await Promise.all(
+          (inserted || []).map(async (row) => {
+            const client = mapDbClient(row);
+            return { ...client, configs: await decryptConfigs(client.configs) };
+          })
+        );
+
         setClients(loadedClients);
         setSelectedClientId(loadedClients[0]?.id || null);
         setActiveType("Todos");
@@ -651,8 +777,9 @@ export default function ConnectionManagerApp() {
       }
 
       try {
-        const normalizedConfigs = importedConfigs.map(ensureConfig);
-        const updatedClient = await updateClientConfigs(selectedClient.id, normalizedConfigs);
+        const normalizedConfigs = ensureClient({ configs: importedConfigs }).configs;
+        const decryptedOrPlainConfigs = await decryptConfigs(normalizedConfigs);
+        const updatedClient = await updateClientConfigs(selectedClient.id, decryptedOrPlainConfigs);
         setClients((prev) => prev.map((client) => client.id === updatedClient.id ? updatedClient : client));
         setActiveType("Todos");
         setSearch("");
@@ -732,12 +859,14 @@ export default function ConnectionManagerApp() {
       <input ref={importClientInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importSelectedClient(e.target.files?.[0]); e.target.value = ""; }} />
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mx-auto flex w-full max-w-none flex-col gap-4">
-        <header className="flex w-full flex-col gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur sm:p-5 xl:flex-row xl:items-center xl:justify-between">
-          <div className="min-w-0">
-            <h1 className="break-words bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold tracking-tight text-transparent sm:text-3xl">Gestor de conexiones SAP</h1>
+        <header className="grid w-full grid-cols-1 gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur sm:p-5 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
+          <div className="hidden xl:block" />
+          <div className="min-w-0 text-center">
+            <h1 className="bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-semibold tracking-wide text-transparent sm:text-3xl">SAP Connectivity Manager</h1>
+            <p className="mt-1 text-xs text-slate-400 sm:text-sm">Gestión segura y centralizada de conexiones técnicas</p>
           </div>
-          <div className="flex w-full flex-wrap gap-2 xl:w-auto xl:justify-end">
-            <Button variant="outline" size="icon" title="Exportar todo" aria-label="Exportar todo" onClick={exportAll} className={iconButtonClass}><Download className="h-4 w-4" /></Button>
+          <div className="flex w-full flex-wrap justify-center gap-2 xl:justify-end">
+            <Button variant="outline" size="icon" title="Exportar todo cifrado" aria-label="Exportar todo cifrado" onClick={exportAll} className={iconButtonClass}><Download className="h-4 w-4" /></Button>
             <Button variant="outline" size="icon" title="Importar todo" aria-label="Importar todo" onClick={() => importAllInputRef.current?.click()} className={iconButtonClass}><Upload className="h-4 w-4" /></Button>
             <Button onClick={openCreateDialog} className="h-9 rounded-xl bg-cyan-500 px-3 text-sm text-slate-950 shadow-lg shadow-cyan-950/30 hover:bg-cyan-400" disabled={!selectedClient}><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>
             <Button variant="outline" size="icon" title="Salir" aria-label="Salir" onClick={() => supabase.auth.signOut()} className={iconButtonClass}><LogOut className="h-4 w-4" /></Button>
@@ -779,8 +908,9 @@ export default function ConnectionManagerApp() {
                 <div className="min-w-0">
                   <CardTitle className="min-w-0 break-words text-lg text-cyan-200 sm:text-xl">Configuraciones de {selectedClient?.name || "—"}</CardTitle>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="outline" size="icon" title="Exportar cliente" aria-label="Exportar cliente" onClick={exportSelectedClient} className={iconButtonClass} disabled={!selectedClient}><Download className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" title="Exportar cliente cifrado" aria-label="Exportar cliente cifrado" onClick={exportSelectedClient} className={iconButtonClass} disabled={!selectedClient}><Download className="h-4 w-4" /></Button>
                     <Button variant="outline" size="icon" title="Importar cliente" aria-label="Importar cliente" onClick={() => importClientInputRef.current?.click()} className={iconButtonClass} disabled={!selectedClient}><Upload className="h-4 w-4" /></Button>
+                    <Button variant="outline" size="icon" title="Compartir cliente por email" aria-label="Compartir cliente por email" onClick={() => shareClientByEmail(selectedClient)} className={iconButtonClass} disabled={!selectedClient}><Mail className="h-4 w-4" /></Button>
                   </div>
                 </div>
                 <div className="relative w-full xl:max-w-sm">
@@ -791,7 +921,7 @@ export default function ConnectionManagerApp() {
               <Tabs value={activeType} onValueChange={setActiveType} className="w-full">
                 <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl bg-slate-950/60 p-1">
                   {["Todos", ...CONNECTION_TYPES].map((type) => (
-                    <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-slate-300 data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950">
+                    <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-slate-300 transition hover:bg-slate-800 hover:text-cyan-200 data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950 data-[state=active]:hover:bg-cyan-400 data-[state=active]:hover:text-slate-950">
                       {type !== "Todos" && <span className="mr-2">{typeIcon(type)}</span>}{type}
                     </TabsTrigger>
                   ))}
