@@ -1,25 +1,16 @@
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
-function arrayBufferToBase64(buffer: ArrayBuffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-}
-
-function base64ToArrayBuffer(base64: string) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes.buffer;
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+    },
+  });
 }
 
 function isEncryptedValue(value: unknown) {
@@ -27,80 +18,90 @@ function isEncryptedValue(value: unknown) {
     value &&
       typeof value === "object" &&
       "__encrypted" in value &&
-      (value as Record<string, unknown>).__encrypted === true
+      (value as any).__encrypted
   );
 }
 
-async function getServerCryptoKey() {
+function base64ToUint8Array(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array) {
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return btoa(binary);
+}
+
+async function getCryptoKey() {
   const secret = Deno.env.get("SERVER_CRYPTO_SECRET");
 
   if (!secret) {
-    throw new Error("SERVER_CRYPTO_SECRET no está configurado.");
+    throw new Error("SERVER_CRYPTO_SECRET no está configurado en Supabase Secrets.");
   }
 
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    textEncoder.encode(secret)
-  );
+  const secretBytes = encoder.encode(secret.padEnd(32, "0").slice(0, 32));
 
   return crypto.subtle.importKey(
     "raw",
-    hash,
+    secretBytes,
     { name: "AES-GCM" },
     false,
     ["encrypt", "decrypt"]
   );
 }
 
-async function encryptText(plainText: unknown) {
-  if (!plainText) return "";
+async function encryptText(value: unknown) {
+  if (!value) return "";
+  if (isEncryptedValue(value)) return value;
 
-  if (isEncryptedValue(plainText)) {
-    return plainText;
-  }
-
-  const key = await getServerCryptoKey();
+  const key = await getCryptoKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
+  const plainText = encoder.encode(String(value));
 
-  const encrypted = await crypto.subtle.encrypt(
+  const encryptedBuffer = await crypto.subtle.encrypt(
     {
       name: "AES-GCM",
       iv,
     },
     key,
-    textEncoder.encode(String(plainText))
+    plainText
   );
 
   return {
     __encrypted: true,
     alg: "AES-GCM",
     mode: "server",
-    iv: arrayBufferToBase64(iv.buffer),
-    data: arrayBufferToBase64(encrypted),
+    iv: uint8ArrayToBase64(iv),
+    data: uint8ArrayToBase64(new Uint8Array(encryptedBuffer)),
   };
 }
 
 async function decryptText(value: unknown) {
   if (!value) return "";
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (!isEncryptedValue(value)) {
-    return "";
-  }
+  if (typeof value === "string") return value;
+  if (!isEncryptedValue(value)) return "";
 
   const encryptedValue = value as {
     iv: string;
     data: string;
   };
 
-  const key = await getServerCryptoKey();
-  const iv = new Uint8Array(base64ToArrayBuffer(encryptedValue.iv));
-  const encryptedData = base64ToArrayBuffer(encryptedValue.data);
+  const key = await getCryptoKey();
+  const iv = base64ToUint8Array(encryptedValue.iv);
+  const encryptedData = base64ToUint8Array(encryptedValue.data);
 
-  const decrypted = await crypto.subtle.decrypt(
+  const decryptedBuffer = await crypto.subtle.decrypt(
     {
       name: "AES-GCM",
       iv,
@@ -109,7 +110,7 @@ async function decryptText(value: unknown) {
     encryptedData
   );
 
-  return textDecoder.decode(decrypted);
+  return decoder.decode(decryptedBuffer);
 }
 
 async function encryptConfig(config: any) {
@@ -166,103 +167,92 @@ async function decryptConfig(config: any) {
   return config;
 }
 
-async function encryptConfigs(configs: any[]) {
-  return Promise.all((configs || []).map((config) => encryptConfig(config)));
-}
-
-async function decryptConfigs(configs: any[]) {
-  return Promise.all((configs || []).map((config) => decryptConfig(config)));
-}
-
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders,
-    });
-  }
-
   try {
+    if (req.method === "OPTIONS") {
+      return jsonResponse({ ok: true });
+    }
+
     if (req.method !== "POST") {
-      return new Response(
-        JSON.stringify({ error: "Método no permitido." }),
+      return jsonResponse(
         {
-          status: 405,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
+          error: "Método no permitido. Usa POST.",
+        },
+        405
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+
+    if (!body) {
+      return jsonResponse(
+        {
+          error: "Body JSON inválido o vacío.",
+        },
+        400
+      );
+    }
+
     const { action, configs } = body;
 
     if (!action) {
-      return new Response(
-        JSON.stringify({ error: "Falta action." }),
+      return jsonResponse(
         {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
+          error: "Falta el parámetro action.",
+        },
+        400
       );
     }
 
-    if (action === "encryptConfigs") {
-      const encryptedConfigs = await encryptConfigs(configs || []);
-
-      return new Response(
-        JSON.stringify({ configs: encryptedConfigs }),
+    if (!Array.isArray(configs)) {
+      return jsonResponse(
         {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
+          error: "El parámetro configs debe ser un array.",
+        },
+        400
       );
+    }
+
+    console.log("crypto-config action:", action);
+    console.log("configs recibidas:", configs.length);
+
+    if (action === "encryptConfigs") {
+      const encryptedConfigs = await Promise.all(
+        configs.map((config: any) => encryptConfig(config))
+      );
+
+      return jsonResponse({
+        configs: encryptedConfigs,
+      });
     }
 
     if (action === "decryptConfigs") {
-      const decryptedConfigs = await decryptConfigs(configs || []);
-
-      return new Response(
-        JSON.stringify({ configs: decryptedConfigs }),
-        {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
+      const decryptedConfigs = await Promise.all(
+        configs.map((config: any) => decryptConfig(config))
       );
+
+      return jsonResponse({
+        configs: decryptedConfigs,
+      });
     }
 
-    return new Response(
-      JSON.stringify({ error: "Action no soportada." }),
+    return jsonResponse(
       {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+        error: `Action no soportada: ${action}`,
+      },
+      400
     );
   } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "Error desconocido.",
-      }),
+    console.error("Error en crypto-config:", error);
+
+    return jsonResponse(
       {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
+        error:
+          error instanceof Error
+            ? error.message
+            : "Error desconocido en crypto-config.",
+      },
+      500
     );
   }
 });

@@ -651,6 +651,7 @@ export default function ConnectionManagerApp() {
   const [exportInfo, setExportInfo] = useState("");
 const [passwordRecovery, setPasswordRecovery] = useState(false);
 const [newPassword, setNewPassword] = useState("");
+const [confirmPassword, setConfirmPassword] = useState("");
 const [recoveryError, setRecoveryError] = useState("");
 const [recoveryMessage, setRecoveryMessage] = useState("");
 const [recoveryLoading, setRecoveryLoading] = useState(false);
@@ -697,6 +698,50 @@ const updateRecoveredPassword = async () => {
     setPasswordRecovery(false);
     setRecoveryMessage("");
   }, 1200);
+};
+
+const updateRecoveredPassword = async (e) => {
+  e.preventDefault();
+
+  setAuthError("");
+  setAuthMessage("");
+
+  if (!newPassword.trim()) {
+    setAuthError("Introduce la nueva contraseña.");
+    return;
+  }
+
+  if (newPassword.length < 6) {
+    setAuthError("La contraseña debe tener al menos 6 caracteres.");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    setAuthError("Las contraseñas no coinciden.");
+    return;
+  }
+
+  setLoading(true);
+
+  const { error } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  setLoading(false);
+
+  if (error) {
+    setAuthError(error.message);
+    return;
+  }
+
+  setAuthMessage("Contraseña actualizada correctamente.");
+
+  setNewPassword("");
+  setConfirmPassword("");
+
+  setTimeout(() => {
+    setPasswordRecovery(false);
+  }, 1500);
 };
 
 const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
