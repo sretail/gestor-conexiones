@@ -664,103 +664,74 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
       setAuthLoading(false);
     });
 
-const updateRecoveredPassword = async () => {
-  setRecoveryError("");
-  setRecoveryMessage("");
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession);
+      setAuthLoading(false);
 
-  if (!newPassword.trim()) {
-    setRecoveryError("Introduce la nueva contraseña.");
-    return;
-  }
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecovery(true);
+      }
 
-  if (newPassword.trim().length < 6) {
-    setRecoveryError("La contraseña debe tener al menos 6 caracteres.");
-    return;
-  }
-
-  setRecoveryLoading(true);
-
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword.trim(),
-  });
-
-  setRecoveryLoading(false);
-
-  if (error) {
-    setRecoveryError(error.message);
-    return;
-  }
-
-  setRecoveryMessage("Contraseña actualizada correctamente.");
-  setNewPassword("");
-
-  window.setTimeout(() => {
-    setPasswordRecovery(false);
-    setRecoveryMessage("");
-  }, 1200);
-};
-
-const updateRecoveredPassword = async (e) => {
-  e.preventDefault();
-
-  setAuthError("");
-  setAuthMessage("");
-
-  if (!newPassword.trim()) {
-    setAuthError("Introduce la nueva contraseña.");
-    return;
-  }
-
-  if (newPassword.length < 6) {
-    setAuthError("La contraseña debe tener al menos 6 caracteres.");
-    return;
-  }
-
-  if (newPassword !== confirmPassword) {
-    setAuthError("Las contraseñas no coinciden.");
-    return;
-  }
-
-  setLoading(true);
-
-  const { error } = await supabase.auth.updateUser({
-    password: newPassword,
-  });
-
-  setLoading(false);
-
-  if (error) {
-    setAuthError(error.message);
-    return;
-  }
-
-  setAuthMessage("Contraseña actualizada correctamente.");
-
-  setNewPassword("");
-  setConfirmPassword("");
-
-  setTimeout(() => {
-    setPasswordRecovery(false);
-  }, 1500);
-};
-
-const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
-  setSession(nextSession);
-  setAuthLoading(false);
-
-  if (event === "PASSWORD_RECOVERY") {
-    setPasswordRecovery(true);
-  }
-
-  if (!nextSession) {
-    setClients([]);
-    setSelectedClientId(null);
-  }
-});
-
+      if (!nextSession) {
+        setClients([]);
+        setSelectedClientId(null);
+      }
+    });
 
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  const updateRecoveredPassword = async (e) => {
+    e?.preventDefault?.();
+
+    setRecoveryError("");
+    setRecoveryMessage("");
+
+    const trimmedNewPassword = newPassword.trim();
+    const trimmedConfirmPassword = confirmPassword.trim();
+
+    if (!trimmedNewPassword) {
+      setRecoveryError("Introduce la nueva contraseña.");
+      return;
+    }
+
+    if (trimmedNewPassword.length < 6) {
+      setRecoveryError("La contraseña debe tener al menos 6 caracteres.");
+      return;
+    }
+
+    if (!trimmedConfirmPassword) {
+      setRecoveryError("Confirma la nueva contraseña.");
+      return;
+    }
+
+    if (trimmedNewPassword !== trimmedConfirmPassword) {
+      setRecoveryError("Las contraseñas no coinciden.");
+      return;
+    }
+
+    setRecoveryLoading(true);
+
+    const { error } = await supabase.auth.updateUser({
+      password: trimmedNewPassword,
+    });
+
+    setRecoveryLoading(false);
+
+    if (error) {
+      setRecoveryError(error.message);
+      return;
+    }
+
+    setRecoveryMessage("Contraseña actualizada correctamente.");
+    setNewPassword("");
+    setConfirmPassword("");
+
+    window.setTimeout(() => {
+      setPasswordRecovery(false);
+      setRecoveryMessage("");
+    }, 1200);
+  };
 
   const loadClients = async () => {
     if (!session?.user?.id) return;
@@ -1064,6 +1035,20 @@ if (passwordRecovery) {
             }}
           />
         </Field>
+        <div className="mt-4">
+          <Field label="Confirmar contraseña">
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repite la nueva contraseña"
+              className={inputClass}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") updateRecoveredPassword();
+              }}
+            />
+          </Field>
+        </div>
 
         {recoveryError && (
           <div className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
@@ -1091,6 +1076,7 @@ if (passwordRecovery) {
             onClick={() => {
               setPasswordRecovery(false);
               setNewPassword("");
+              setConfirmPassword("");
               setRecoveryError("");
               setRecoveryMessage("");
             }}
