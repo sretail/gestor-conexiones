@@ -31,9 +31,9 @@ const emptyForms = {
   Fiori: { environment: "DES", url: "" },
 };
 
-const inputClass = "h-10 w-full rounded-xl border-slate-700 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus-visible:ring-cyan-500";
-const cardClass = "rounded-3xl border border-white/10 bg-slate-900/75 text-slate-100 shadow-2xl shadow-slate-950/40 backdrop-blur";
-const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800";
+const inputClass = "h-10 w-full rounded-xl border-[#dce2ea] bg-white text-[#182b56] placeholder:text-[#8b98aa] focus-visible:ring-[#67aef7]";
+const cardClass = "rounded-3xl border border-[#edf1f6] bg-white/95 text-[#182b56] shadow-xl shadow-[#243e87]/10 backdrop-blur";
+const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]";
 
 function typeIcon(type) {
   const className = "h-4 w-4 shrink-0";
@@ -45,7 +45,7 @@ function typeIcon(type) {
 
 function typeBadgeClass(type) {
   if (type === "VPN") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-300";
-  if (type === "SAP") return "border-cyan-400/30 bg-cyan-400/10 text-cyan-300";
+  if (type === "SAP") return "border-[#67aef7]/40 bg-[#eaf4ff] text-[#243e87]";
   if (type === "OSS") return "border-amber-400/30 bg-amber-400/10 text-amber-300";
   return "border-violet-400/30 bg-violet-400/10 text-violet-300";
 }
@@ -127,7 +127,7 @@ function CopyButton({ value, label = "Copiar" }) {
       aria-label={label}
       disabled={!copyValue}
       onClick={copyToClipboard}
-      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-cyan-400/10 hover:text-cyan-300 disabled:cursor-not-allowed disabled:opacity-30"
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#62718a] transition hover:bg-[#eaf4ff] hover:text-[#243e87] disabled:cursor-not-allowed disabled:opacity-30"
     >
       {copied ? <Check className="h-3.5 w-3.5 text-emerald-300" /> : <Copy className="h-3.5 w-3.5" />}
     </button>
@@ -307,7 +307,7 @@ function shareClientByEmail(client) {
 function Field({ label, children }) {
   return (
     <div className="min-w-0 space-y-2">
-      <Label className="text-sm font-medium text-slate-300">{label}</Label>
+      <Label className="text-sm font-medium text-[#243e87]">{label}</Label>
       {children}
     </div>
   );
@@ -360,26 +360,26 @@ function ConfigForm({ type, form, setForm }) {
         <div className="sm:col-span-2"><Field label="String de saprouter"><Input value={form.saprouter} onChange={(e) => update("saprouter", e.target.value)} placeholder="/H/router/S/3299/H/servidor" className={inputClass} /></Field></div>
 
         <div className="sm:col-span-2">
-          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+          <div className="rounded-2xl border border-[#edf1f6] bg-[#f8fafd] p-4">
             <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-slate-100">Usuarios SAP</h3>
-                <p className="text-xs text-slate-400">Añade una o varias parejas usuario/password para este sistema SAP.</p>
+                <h3 className="text-sm font-semibold text-[#182b56]">Usuarios SAP</h3>
+                <p className="text-xs text-[#62718a]">Añade una o varias parejas usuario/password para este sistema SAP.</p>
               </div>
-              <Button type="button" variant="outline" size="sm" onClick={addSapCredential} className="rounded-xl border-cyan-400/40 bg-transparent text-cyan-300 hover:bg-cyan-400/10 hover:text-cyan-200">
+              <Button type="button" variant="outline" size="sm" onClick={addSapCredential} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]">
                 <Plus className="mr-2 h-4 w-4" /> Añadir usuario
               </Button>
             </div>
 
             {sapCredentials.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-cyan-400/30 p-4 text-sm text-slate-400">No hay usuarios SAP añadidos.</div>
+              <div className="rounded-xl border border-dashed border-[#67aef7]/40 p-4 text-sm text-[#62718a]">No hay usuarios SAP añadidos.</div>
             ) : (
               <div className="space-y-3">
                 {sapCredentials.map((credential, index) => (
-                  <div key={credential.id} className="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-slate-900/60 p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                  <div key={credential.id} className="grid grid-cols-1 gap-3 rounded-xl border border-[#edf1f6] bg-white p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
                     <Field label={`Usuario ${index + 1}`}><Input value={credential.user || ""} onChange={(e) => updateSapCredential(credential.id, "user", e.target.value)} placeholder="usuario SAP" className={inputClass} /></Field>
                     <Field label="Password"><Input type="password" value={credential.password || ""} onChange={(e) => updateSapCredential(credential.id, "password", e.target.value)} placeholder="••••••••" className={inputClass} /></Field>
-                    <Button type="button" variant="outline" size="sm" onClick={() => deleteSapCredential(credential.id)} className="rounded-xl border-red-400/40 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-200">
+                    <Button type="button" variant="outline" size="sm" onClick={() => deleteSapCredential(credential.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200">
                       <Trash2 className="mr-2 h-4 w-4" /> Borrar
                     </Button>
                   </div>
@@ -405,8 +405,8 @@ function ConfigForm({ type, form, setForm }) {
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
       <Field label="Entorno *">
         <Select value={form.environment} onValueChange={(value) => update("environment", value)}>
-          <SelectTrigger className="h-10 rounded-xl border-slate-700 bg-slate-950/70 text-slate-100 focus:ring-cyan-500"><SelectValue /></SelectTrigger>
-          <SelectContent className="border-slate-700 bg-slate-900 text-slate-100">
+          <SelectTrigger className="h-10 rounded-xl border-[#dce2ea] bg-white text-[#182b56] focus:ring-[#67aef7]"><SelectValue /></SelectTrigger>
+          <SelectContent className="border-[#dce2ea] bg-white text-[#182b56]">
             {FIORI_ENVIRONMENTS.map((env) => <SelectItem key={env} value={env}>{env}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -420,8 +420,8 @@ function DetailItem({ label, value, wide = false, copyValue }) {
   const displayValue = value || "—";
   return (
     <div className={`min-w-0 ${wide ? "md:col-span-2 xl:col-span-3" : ""}`}>
-      <span className="font-semibold text-slate-100">{label}: </span>
-      <span className="break-words text-slate-300">{displayValue}</span>
+      <span className="font-semibold text-[#182b56]">{label}: </span>
+      <span className="break-words text-[#344767]">{displayValue}</span>
       <CopyButton value={copyValue ?? value} />
     </div>
   );
@@ -447,17 +447,17 @@ function ConfigDetails({ config }) {
         <DetailItem label="Servidor" value={config.applicationServer} />
         <DetailItem label="Saprouter" value={config.saprouter} wide />
         <div className="md:col-span-2 xl:col-span-3">
-          <span className="font-semibold text-slate-100">Usuarios SAP: </span>
+          <span className="font-semibold text-[#182b56]">Usuarios SAP: </span>
           {Array.isArray(config.sapCredentials) && config.sapCredentials.length > 0 ? (
             <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
               {config.sapCredentials.map((credential, index) => (
-                <div key={credential.id || index} className="rounded-xl border border-white/10 bg-slate-900/50 p-3 text-sm">
-                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-slate-100">Usuario:</span><span className="min-w-0 break-words text-slate-300">{credential.user || "—"}</span><CopyButton value={credential.user} /></div>
-                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-slate-100">Password:</span><span className="min-w-0 break-words text-slate-300">{maskPassword(credential.password)}</span><CopyButton value={credential.password} /></div>
+                <div key={credential.id || index} className="rounded-xl border border-[#edf1f6] bg-[#f8fafd] p-3 text-sm">
+                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-[#182b56]">Usuario:</span><span className="min-w-0 break-words text-[#344767]">{credential.user || "—"}</span><CopyButton value={credential.user} /></div>
+                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-[#182b56]">Password:</span><span className="min-w-0 break-words text-[#344767]">{maskPassword(credential.password)}</span><CopyButton value={credential.password} /></div>
                 </div>
               ))}
             </div>
-          ) : <span className="text-slate-300">—</span>}
+          ) : <span className="text-[#344767]">—</span>}
         </div>
       </div>
     );
@@ -473,9 +473,9 @@ function ConfigDetails({ config }) {
   }
 
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-2 text-sm text-slate-300">
-      <span className="inline-flex items-center gap-1"><b className="text-slate-100">Entorno:</b> {config.environment}<CopyButton value={config.environment} /></span>
-      <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg px-2 py-1 text-cyan-300 hover:bg-cyan-400/10">
+    <div className="flex min-w-0 flex-wrap items-center gap-x-8 gap-y-2 text-sm text-[#344767]">
+      <span className="inline-flex items-center gap-1"><b className="text-[#182b56]">Entorno:</b> {config.environment}<CopyButton value={config.environment} /></span>
+      <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-lg px-2 py-1 text-[#243e87] hover:bg-[#2d4a9a]/10">
         <button className="min-w-0" onClick={() => window.open(config.url, "_blank", "noopener,noreferrer")}><span className="break-all">{config.url}</span></button>
         <ExternalLink className="h-3.5 w-3.5 shrink-0" />
         <CopyButton value={config.url} />
@@ -554,13 +554,13 @@ function LoginScreen() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-4 text-slate-100">
-      <div className="w-full max-w-xl rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/50">
-        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">
+    <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] px-4 text-[#182b56]">
+      <div className="w-full max-w-xl rounded-3xl border border-[#edf1f6] bg-white p-6 shadow-2xl shadow-[#243e87]/10">
+        <h1 className="mb-2 text-2xl font-bold text-[#243e87]">
           SAP Connectivity Manager
         </h1>
 
-        <p className="mb-6 text-sm text-slate-400">
+        <p className="mb-6 text-sm text-[#62718a]">
           Inicia sesión para acceder a la aplicación.
         </p>
 
@@ -604,7 +604,7 @@ function LoginScreen() {
             <Button
               onClick={login}
               disabled={loading}
-              className="w-full rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+              className="w-full rounded-xl bg-[#243e87] text-white hover:bg-[#2d4a9a]"
             >
               {loading ? "Validando..." : "Entrar"}
             </Button>
@@ -613,7 +613,7 @@ function LoginScreen() {
               variant="outline"
               onClick={register}
               disabled={loading}
-              className="w-full rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800"
+              className="w-full rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]"
             >
               Registrarse
             </Button>
@@ -623,7 +623,7 @@ function LoginScreen() {
             type="button"
             onClick={resetPassword}
             disabled={resetLoading}
-            className="w-full text-center text-sm text-cyan-300 transition hover:text-cyan-200 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full text-center text-sm text-[#243e87] transition hover:text-[#2d4a9a] hover:underline disabled:cursor-not-allowed disabled:opacity-60"
           >
             {resetLoading ? "Enviando email..." : "¿Has olvidado tu contraseña?"}
           </button>
@@ -1013,13 +1013,13 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
 
 if (passwordRecovery) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-4 text-slate-100">
-      <div className="w-full max-w-md rounded-3xl border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/50">
-        <h1 className="mb-2 bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-bold text-transparent">
+    <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] px-4 text-[#182b56]">
+      <div className="w-full max-w-md rounded-3xl border border-[#edf1f6] bg-white p-6 shadow-2xl shadow-[#243e87]/10">
+        <h1 className="mb-2 text-2xl font-bold text-[#243e87]">
           Nueva contraseña
         </h1>
 
-        <p className="mb-6 text-sm text-slate-400">
+        <p className="mb-6 text-sm text-[#62718a]">
           Introduce tu nueva contraseña para completar la recuperación.
         </p>
 
@@ -1066,7 +1066,7 @@ if (passwordRecovery) {
           <Button
             onClick={updateRecoveredPassword}
             disabled={recoveryLoading}
-            className="w-full rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+            className="w-full rounded-xl bg-[#243e87] text-white hover:bg-[#2d4a9a]"
           >
             {recoveryLoading ? "Guardando..." : "Actualizar"}
           </Button>
@@ -1080,7 +1080,7 @@ if (passwordRecovery) {
               setRecoveryError("");
               setRecoveryMessage("");
             }}
-            className="w-full rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800"
+            className="w-full rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]"
           >
             Cancelar
           </Button>
@@ -1093,7 +1093,7 @@ if (passwordRecovery) {
 
 
   if (authLoading) {
-    return <div className="flex min-h-screen items-center justify-center bg-slate-950 text-slate-100">Cargando sesión...</div>;
+    return <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] text-[#182b56]">Cargando sesión...</div>;
   }
 
   if (!session) {
@@ -1101,21 +1101,24 @@ if (passwordRecovery) {
   }
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-1 py-3 text-slate-100 sm:px-2 md:px-3">
+    <div className="min-h-screen w-full overflow-x-hidden bg-[#f4f6f9] px-1 py-0 text-[#182b56] sm:px-2 md:px-3">
       <input ref={importAllInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importAll(e.target.files?.[0]); e.target.value = ""; }} />
       <input ref={importClientInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importSelectedClient(e.target.files?.[0]); e.target.value = ""; }} />
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mx-auto flex w-full max-w-none flex-col gap-4">
-        <header className="grid w-full grid-cols-1 gap-4 rounded-3xl border border-white/10 bg-slate-900/70 p-4 shadow-2xl shadow-cyan-950/30 backdrop-blur sm:p-5 xl:grid-cols-[1fr_auto_1fr] xl:items-center">
-          <div className="hidden xl:block" />
-          <div className="min-w-0 text-center">
-            <h1 className="bg-gradient-to-r from-cyan-300 to-emerald-300 bg-clip-text text-2xl font-semibold tracking-wide text-transparent sm:text-3xl">SAP Connectivity Manager</h1>
-            <p className="mt-1 text-xs text-slate-400 sm:text-sm">Gestión segura y centralizada de conexiones técnicas</p>
+        <header className="flex w-full flex-col gap-4 bg-[#243e87] px-5 py-3 shadow-lg shadow-[#243e87]/20 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-4">
+            <img src="/seidor-logo.png" alt="SEIDOR" className="h-8 w-auto object-contain" />
+            <div className="hidden h-8 w-px bg-white/25 sm:block" />
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold tracking-wide text-white sm:text-xl">SAP Connectivity Manager</h1>
+              <p className="mt-0.5 text-xs text-white/70 sm:text-sm">Gestión segura y centralizada de conexiones técnicas</p>
+            </div>
           </div>
-          <div className="flex w-full flex-wrap justify-center gap-2 xl:justify-end">
+          <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
             <Button variant="outline" size="icon" title="Exportar todo cifrado" aria-label="Exportar todo cifrado" onClick={exportAll} className={iconButtonClass}><Download className="h-4 w-4" /></Button>
             <Button variant="outline" size="icon" title="Importar todo" aria-label="Importar todo" onClick={() => importAllInputRef.current?.click()} className={iconButtonClass}><Upload className="h-4 w-4" /></Button>
-            <Button onClick={openCreateDialog} className="h-9 rounded-xl bg-cyan-500 px-3 text-sm text-slate-950 shadow-lg shadow-cyan-950/30 hover:bg-cyan-400" disabled={!selectedClient}><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>
+            <Button onClick={openCreateDialog} className="h-9 rounded-xl bg-[#67aef7] px-3 text-sm text-[#182b56] shadow-lg shadow-[#1d326f]/20 hover:bg-[#8cc4fb]" disabled={!selectedClient}><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>
             <Button variant="outline" size="icon" title="Salir" aria-label="Salir" onClick={() => supabase.auth.signOut()} className={iconButtonClass}><LogOut className="h-4 w-4" /></Button>
           </div>
         </header>
@@ -1125,23 +1128,23 @@ if (passwordRecovery) {
 
         <main className="grid w-full grid-cols-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
           <Card className={`${cardClass} min-w-0`}>
-            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg text-cyan-200"><Building2 className="h-5 w-5" /> Clientes</CardTitle></CardHeader>
+            <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg text-[#243e87]"><Building2 className="h-5 w-5" /> Clientes</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="flex min-w-0 gap-2">
                 <Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nombre cliente" onKeyDown={(e) => e.key === "Enter" && addClient()} className={inputClass} />
-                <Button onClick={addClient} className="shrink-0 rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400"><Plus className="h-4 w-4" /></Button>
+                <Button onClick={addClient} className="shrink-0 rounded-xl bg-[#243e87] text-white hover:bg-[#2d4a9a]"><Plus className="h-4 w-4" /></Button>
               </div>
               {dataLoading ? (
-                <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-sm text-slate-400">Cargando clientes...</div>
+                <div className="rounded-2xl border border-[#edf1f6] bg-[#f8fafd] p-4 text-sm text-[#62718a]">Cargando clientes...</div>
               ) : (
                 <div className="space-y-2">
                   {clients.map((client) => (
-                    <div key={client.id} className={`flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selectedClientId === client.id ? "border-cyan-400/40 bg-cyan-400/10 shadow-sm" : "border-white/10 bg-slate-950/40 hover:bg-slate-800/70"}`}>
+                    <div key={client.id} className={`flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selectedClientId === client.id ? "border-[#67aef7]/60 bg-[#eaf4ff] shadow-sm" : "border-[#edf1f6] bg-[#f8fafd] hover:bg-[#f4f9ff]"}`}>
                       <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedClientId(client.id)}>
-                        <div className="truncate font-semibold text-slate-100">{client.name}</div>
-                        <div className="text-xs text-slate-400">{client.configs.length} configuraciones</div>
+                        <div className="truncate font-semibold text-[#182b56]">{client.name}</div>
+                        <div className="text-xs text-[#62718a]">{client.configs.length} configuraciones</div>
                       </button>
-                      <Button variant="ghost" size="icon" onClick={() => deleteClient(client.id)} className="shrink-0 rounded-xl text-slate-400 hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => deleteClient(client.id)} className="shrink-0 rounded-xl text-[#62718a] hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   ))}
                 </div>
@@ -1153,7 +1156,7 @@ if (passwordRecovery) {
             <CardHeader className="space-y-4 pb-3">
               <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
-                  <CardTitle className="min-w-0 break-words text-lg text-cyan-200 sm:text-xl">Configuraciones de {selectedClient?.name || "—"}</CardTitle>
+                  <CardTitle className="min-w-0 break-words text-lg text-[#243e87] sm:text-xl">Configuraciones de {selectedClient?.name || "—"}</CardTitle>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Button variant="outline" size="icon" title="Exportar cliente cifrado" aria-label="Exportar cliente cifrado" onClick={exportSelectedClient} className={iconButtonClass} disabled={!selectedClient}><Download className="h-4 w-4" /></Button>
                     <Button variant="outline" size="icon" title="Importar cliente" aria-label="Importar cliente" onClick={() => importClientInputRef.current?.click()} className={iconButtonClass} disabled={!selectedClient}><Upload className="h-4 w-4" /></Button>
@@ -1161,14 +1164,14 @@ if (passwordRecovery) {
                   </div>
                 </div>
                 <div className="relative w-full xl:max-w-sm">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-cyan-400" />
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#67aef7]" />
                   <Input className={`${inputClass} pl-9`} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar configuración..." />
                 </div>
               </div>
               <Tabs value={activeType} onValueChange={setActiveType} className="w-full">
-                <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl bg-slate-950/60 p-1">
+                <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl bg-[#f8fafd] p-1">
                   {["Todos", ...CONNECTION_TYPES].map((type) => (
-                    <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-slate-300 transition hover:bg-slate-800 hover:text-cyan-200 data-[state=active]:bg-cyan-500 data-[state=active]:text-slate-950 data-[state=active]:hover:bg-cyan-400 data-[state=active]:hover:text-slate-950">
+                    <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-[#344767] transition hover:bg-[#f4f9ff] hover:text-[#243e87] data-[state=active]:bg-[#243e87] data-[state=active]:text-white data-[state=active]:hover:bg-[#2d4a9a] data-[state=active]:hover:text-white">
                       {type !== "Todos" && <span className="mr-2">{typeIcon(type)}</span>}{type}
                     </TabsTrigger>
                   ))}
@@ -1177,24 +1180,24 @@ if (passwordRecovery) {
             </CardHeader>
             <CardContent>
               {!selectedClient ? (
-                <div className="rounded-2xl border border-dashed border-cyan-400/30 bg-slate-950/40 p-8 text-center text-slate-400 sm:p-10">Crea un cliente para empezar.</div>
+                <div className="rounded-2xl border border-dashed border-[#67aef7]/40 bg-[#f8fafd] p-8 text-center text-[#62718a] sm:p-10">Crea un cliente para empezar.</div>
               ) : filteredConfigs.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-cyan-400/30 bg-slate-950/40 p-8 text-center text-slate-400 sm:p-10">No hay configuraciones para mostrar. Crea una nueva configuración para este cliente.</div>
+                <div className="rounded-2xl border border-dashed border-[#67aef7]/40 bg-[#f8fafd] p-8 text-center text-[#62718a] sm:p-10">No hay configuraciones para mostrar. Crea una nueva configuración para este cliente.</div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {filteredConfigs.map((config) => (
-                    <motion.div key={config.id} layout className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/50 p-4 shadow-sm transition hover:border-cyan-400/40 hover:bg-slate-900/80 hover:shadow-lg hover:shadow-cyan-950/30">
+                    <motion.div key={config.id} layout className="min-w-0 rounded-2xl border border-[#edf1f6] bg-white p-4 shadow-sm transition hover:border-[#67aef7]/60 hover:bg-[#f8fafd] hover:shadow-lg hover:shadow-[#243e87]/10">
                       <div className="mb-4 flex min-w-0 flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                           <Badge className={`gap-1 rounded-xl border ${typeBadgeClass(config.type)}`} variant="outline">{typeIcon(config.type)} {config.type}</Badge>
-                          {config.type === "SAP" && <span className="break-words text-lg font-semibold text-slate-100">{config.description}</span>}
-                          {config.type === "VPN" && <span className="break-words text-lg font-semibold text-slate-100">{config.vpnName || "VPN sin nombre"}</span>}
-                          {config.type === "OSS" && <span className="text-lg font-semibold text-slate-100">OSS</span>}
-                          {config.type === "Fiori" && <span className="text-lg font-semibold text-slate-100">Fiori {config.environment}</span>}
+                          {config.type === "SAP" && <span className="break-words text-lg font-semibold text-[#182b56]">{config.description}</span>}
+                          {config.type === "VPN" && <span className="break-words text-lg font-semibold text-[#182b56]">{config.vpnName || "VPN sin nombre"}</span>}
+                          {config.type === "OSS" && <span className="text-lg font-semibold text-[#182b56]">OSS</span>}
+                          {config.type === "Fiori" && <span className="text-lg font-semibold text-[#182b56]">Fiori {config.environment}</span>}
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-cyan-400/40 bg-transparent text-cyan-300 hover:bg-cyan-400/10 hover:text-cyan-200"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
-                          <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-transparent text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
+                          <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
+                          <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
                         </div>
                       </div>
                       <ConfigDetails config={config} />
@@ -1206,25 +1209,25 @@ if (passwordRecovery) {
           </Card>
         </main>
 
-        <footer className="pb-4 text-center text-xs text-slate-500">Desarrollado por Alfredo Pradas. Todos los derechos reservados.</footer>
+        <footer className="pb-4 text-center text-xs text-[#8b98aa]">Desarrollado por Alfredo Pradas. Todos los derechos reservados.</footer>
       </motion.div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-3xl border-white/10 bg-slate-900 text-slate-100 shadow-2xl shadow-slate-950">
-          <DialogHeader><DialogTitle className="text-cyan-200">{editingConfig ? "Modificar configuración" : "Crear configuración"}</DialogTitle></DialogHeader>
+        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-3xl border-[#edf1f6] bg-white text-[#182b56] shadow-2xl shadow-slate-950">
+          <DialogHeader><DialogTitle className="text-[#243e87]">{editingConfig ? "Modificar configuración" : "Crear configuración"}</DialogTitle></DialogHeader>
           <div className="space-y-5">
             <Field label="Tipo de conexión">
               <Select value={selectedType} onValueChange={onTypeChange} disabled={Boolean(editingConfig)}>
-                <SelectTrigger className="h-10 rounded-xl border-slate-700 bg-slate-950/70 text-slate-100 focus:ring-cyan-500"><SelectValue /></SelectTrigger>
-                <SelectContent className="border-slate-700 bg-slate-900 text-slate-100">{CONNECTION_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="h-10 rounded-xl border-[#dce2ea] bg-white text-[#182b56] focus:ring-[#67aef7]"><SelectValue /></SelectTrigger>
+                <SelectContent className="border-[#dce2ea] bg-white text-[#182b56]">{CONNECTION_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
             <ConfigForm type={selectedType} form={form} setForm={setForm} />
             {errors.length > 0 && <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200"><ul className="list-inside list-disc">{errors.map((error) => <li key={error}>{error}</li>)}</ul></div>}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl border-slate-600 bg-transparent text-slate-200 hover:bg-slate-800">Cancelar</Button>
-            <Button onClick={saveConfig} className="rounded-xl bg-cyan-500 text-slate-950 hover:bg-cyan-400">Guardar</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]">Cancelar</Button>
+            <Button onClick={saveConfig} className="rounded-xl bg-[#243e87] text-white hover:bg-[#2d4a9a]">Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
