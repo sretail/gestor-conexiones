@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "./supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,9 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, Download, Upload, LogOut, Copy, Check, Mail } from "lucide-react";
+import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, LogOut, Copy, Check, Eye, EyeOff, FileDown, Link2, FileText, FileSpreadsheet, FileImage, FileArchive, File, Presentation } from "lucide-react";
 
-const CONNECTION_TYPES = ["VPN", "SAP", "OSS", "Fiori"];
+const CONNECTION_TYPES = ["VPN", "SAP", "OSS", "Fiori", "Enlaces"];
 const FIORI_ENVIRONMENTS = ["DES", "QA", "PRD"];
 const CLIENTS_TABLE = "connection_clients";
 const CRYPTO_FUNCTION = "crypto-config";
@@ -29,6 +29,7 @@ const emptyForms = {
   },
   OSS: { user: "", password: "" },
   Fiori: { environment: "DES", url: "" },
+  Enlaces: { links: [{ id: crypto.randomUUID(), description: "", url: "" }] },
 };
 
 const inputClass = "h-10 w-full rounded-xl border-[#dce2ea] bg-white text-[#182b56] placeholder:text-[#8b98aa] focus-visible:ring-[#67aef7]";
@@ -40,14 +41,30 @@ function typeIcon(type) {
   if (type === "VPN") return <Shield className={className} />;
   if (type === "SAP") return <Server className={className} />;
   if (type === "OSS") return <KeyRound className={className} />;
+  if (type === "Enlaces") return <Link2 className={className} />;
   return <Globe2 className={className} />;
 }
 
 function typeBadgeClass(type) {
-  if (type === "VPN") return "border-emerald-400/30 bg-emerald-400/10 text-emerald-300";
-  if (type === "SAP") return "border-[#67aef7]/40 bg-[#eaf4ff] text-[#243e87]";
-  if (type === "OSS") return "border-amber-400/30 bg-amber-400/10 text-amber-300";
-  return "border-violet-400/30 bg-violet-400/10 text-violet-300";
+  if (type === "VPN") return "border-emerald-500/30 bg-emerald-50 text-emerald-700";
+  if (type === "SAP") return "border-[#67aef7]/60 bg-[#eaf4ff] text-[#243e87]";
+  if (type === "OSS") return "border-amber-500/30 bg-amber-50 text-amber-700";
+  if (type === "Enlaces") return "border-[#243e87]/20 bg-[#eef3ff] text-[#243e87]";
+  return "border-violet-500/30 bg-violet-50 text-violet-700";
+}
+
+function linkIconForUrl(url) {
+  const className = "h-4 w-4 shrink-0";
+  const cleanUrl = String(url || "").split("?")[0].split("#")[0].toLowerCase();
+
+  if (cleanUrl.includes("/:w:/") || /\.(doc|docx|rtf)$/.test(cleanUrl)) return <FileText className={`${className} text-blue-700`} />;
+  if (cleanUrl.includes("/:x:/") || /\.(xls|xlsx|csv)$/.test(cleanUrl)) return <FileSpreadsheet className={`${className} text-emerald-700`} />;
+  if (cleanUrl.includes("/:p:/") || /\.(ppt|pptx)$/.test(cleanUrl)) return <Presentation className={`${className} text-orange-700`} />;
+  if (/\.pdf$/.test(cleanUrl)) return <FileText className={`${className} text-red-700`} />;
+  if (/\.(png|jpg|jpeg|gif|webp|svg)$/.test(cleanUrl)) return <FileImage className={`${className} text-purple-700`} />;
+  if (/\.(zip|rar|7z)$/.test(cleanUrl)) return <FileArchive className={`${className} text-amber-700`} />;
+
+  return <File className={`${className} text-[#243e87]`} />;
 }
 
 function isEncryptedValue(value) {
@@ -60,13 +77,72 @@ function maskPassword(value) {
   return "•".repeat(Math.min(String(value).length, 10));
 }
 
-function sanitizeFileName(value) {
-  return String(value || "export")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9áéíóúñü_-]+/gi, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "") || "export";
+function displayPassword(value, showPasswords) {
+  if (!showPasswords) return maskPassword(value);
+  if (!value) return "—";
+  if (isEncryptedValue(value)) return maskPassword(value);
+  return String(value);
+}
+
+function normalizePdfValue(value) {
+  if (value === undefined || value === null || value === "") return "—";
+  return String(value);
+}
+
+function buildPdfRowsForConfig(config, showPasswords) {
+  if (config.type === "VPN") {
+    return [
+      ["VPN", normalizePdfValue(config.vpnName)],
+      ["Usuario", normalizePdfValue(config.user)],
+      ["Password", displayPassword(config.password, showPasswords)],
+    ];
+  }
+
+  if (config.type === "SAP") {
+    const rows = [
+      ["Descripción", normalizePdfValue(config.description)],
+      ["ID Sistema", normalizePdfValue(config.systemId)],
+      ["Instancia", normalizePdfValue(config.instanceNumber)],
+      ["Servidor", normalizePdfValue(config.applicationServer)],
+      ["Saprouter", normalizePdfValue(config.saprouter)],
+    ];
+
+    if (Array.isArray(config.sapCredentials) && config.sapCredentials.length > 0) {
+      config.sapCredentials.forEach((credential, index) => {
+        rows.push([`Usuario SAP ${index + 1}`, normalizePdfValue(credential.user)]);
+        rows.push([`Password SAP ${index + 1}`, displayPassword(credential.password, showPasswords)]);
+      });
+    } else {
+      rows.push(["Usuarios SAP", "—"]);
+    }
+
+    return rows;
+  }
+
+  if (config.type === "OSS") {
+    return [
+      ["Usuario", normalizePdfValue(config.user)],
+      ["Password", displayPassword(config.password, showPasswords)],
+    ];
+  }
+
+  if (config.type === "Fiori") {
+    return [
+      ["Entorno", normalizePdfValue(config.environment)],
+      ["URL", normalizePdfValue(config.url)],
+    ];
+  }
+
+  if (config.type === "Enlaces") {
+    const links = Array.isArray(config.links) ? config.links : [];
+    if (!links.length) return [["Enlaces", "—"]];
+    return links.flatMap((link, index) => [
+      [`Descripción enlace ${index + 1}`, normalizePdfValue(link.description)],
+      [`URL enlace ${index + 1}`, normalizePdfValue(link.url)],
+    ]);
+  }
+
+  return [["Datos", JSON.stringify(config, null, 2)]];
 }
 
 async function invokeCryptoFunction(action, configs) {
@@ -94,15 +170,6 @@ async function encryptConfigs(configs) {
 
 async function decryptConfigs(configs) {
   return invokeCryptoFunction("decryptConfigs", configs);
-}
-
-async function encryptClientsForExport(clients) {
-  return Promise.all(
-    (clients || []).map(async (client) => ({
-      ...client,
-      configs: await encryptConfigs(client.configs),
-    }))
-  );
 }
 
 function CopyButton({ value, label = "Copiar" }) {
@@ -134,31 +201,6 @@ function CopyButton({ value, label = "Copiar" }) {
   );
 }
 
-async function saveJsonFile(fileName, data) {
-  const json = JSON.stringify(data, null, 2);
-  const blob = new Blob([json], { type: "application/json;charset=utf-8" });
-
-  if (window.showSaveFilePicker) {
-    const fileHandle = await window.showSaveFilePicker({
-      suggestedName: fileName,
-      types: [{ description: "Archivo JSON", accept: { "application/json": [".json"] } }],
-    });
-    const writable = await fileHandle.createWritable();
-    await writable.write(blob);
-    await writable.close();
-    return;
-  }
-
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 function ensureConfig(config) {
   const normalized = {
     id: config?.id || crypto.randomUUID(),
@@ -176,15 +218,17 @@ function ensureConfig(config) {
       : [];
   }
 
-  return normalized;
-}
+  if (normalized.type === "Enlaces") {
+    normalized.links = Array.isArray(normalized.links)
+      ? normalized.links.map((link) => ({
+          id: link?.id || crypto.randomUUID(),
+          description: link?.description || "",
+          url: link?.url || "",
+        }))
+      : [];
+  }
 
-function ensureClient(client) {
-  return {
-    id: client?.id || crypto.randomUUID(),
-    name: client?.name || "Cliente importado",
-    configs: Array.isArray(client?.configs) ? client.configs.map(ensureConfig) : [],
-  };
+  return normalized;
 }
 
 function mapDbClient(row) {
@@ -223,85 +267,26 @@ function validateConfig(type, form) {
     }
   }
 
-  return errors;
-}
+  if (type === "Enlaces") {
+    const links = Array.isArray(form.links) ? form.links : [];
+    if (links.length === 0) errors.push("Debes informar al menos un enlace.");
 
-function formatPasswordForEmail(value) {
-  return value ? maskPassword(value) : "—";
-}
+    links.forEach((link, index) => {
+      if (!link.description?.trim()) errors.push(`La descripción del enlace ${index + 1} es obligatoria.`);
+      if (!link.url?.trim()) {
+        errors.push(`La URL del enlace ${index + 1} es obligatoria.`);
+        return;
+      }
 
-function formatClientForEmail(client) {
-  if (!client) return "";
-
-  const lines = [];
-  lines.push("SAP CONNECTIVITY MANAGER");
-  lines.push("==============================================");
-  lines.push("");
-  lines.push(`Cliente: ${client.name}`);
-  lines.push("");
-  lines.push("Configuraciones del cliente");
-  lines.push("----------------------------------------------");
-
-  if (!client.configs || client.configs.length === 0) {
-    lines.push("");
-    lines.push("No hay configuraciones registradas para este cliente.");
+      try {
+        new URL(link.url.trim());
+      } catch {
+        errors.push(`La URL del enlace ${index + 1} no tiene un formato válido. Ejemplo: https://servidor/documento.docx`);
+      }
+    });
   }
 
-  (client.configs || []).forEach((config, index) => {
-    lines.push("");
-    lines.push(`CONFIGURACIÓN ${index + 1}`);
-    lines.push("──────────────────────────────────────────────");
-    lines.push(`Tipo: ${config.type || "—"}`);
-
-    if (config.type === "VPN") {
-      lines.push(`Nombre VPN: ${config.vpnName || "—"}`);
-      lines.push(`Usuario: ${config.user || "—"}`);
-      lines.push(`Password: ${formatPasswordForEmail(config.password)}`);
-    }
-
-    if (config.type === "SAP") {
-      lines.push(`Descripción: ${config.description || "—"}`);
-      lines.push(`ID Sistema: ${config.systemId || "—"}`);
-      lines.push(`Número de instancia: ${config.instanceNumber || "—"}`);
-      lines.push(`Servidor de aplicación: ${config.applicationServer || "—"}`);
-      lines.push(`Saprouter: ${config.saprouter || "—"}`);
-      lines.push("");
-      lines.push("Usuarios SAP:");
-
-      if (Array.isArray(config.sapCredentials) && config.sapCredentials.length > 0) {
-        config.sapCredentials.forEach((credential, credIndex) => {
-          lines.push(`  ${credIndex + 1}. Usuario: ${credential.user || "—"}`);
-          lines.push(`     Password: ${formatPasswordForEmail(credential.password)}`);
-        });
-      } else {
-        lines.push("  —");
-      }
-    }
-
-    if (config.type === "OSS") {
-      lines.push(`Usuario: ${config.user || "—"}`);
-      lines.push(`Password: ${formatPasswordForEmail(config.password)}`);
-    }
-
-    if (config.type === "Fiori") {
-      lines.push(`Entorno: ${config.environment || "—"}`);
-      lines.push(`URL: ${config.url || "—"}`);
-    }
-
-    lines.push("──────────────────────────────────────────────");
-  });
-
-  lines.push("");
-  lines.push("Saludos,");
-  lines.push("Alfredo Pradas");
-  return lines.join("\n");
-}
-
-function shareClientByEmail(client) {
-  if (!client) return;
-  const subject = `Configuraciones de conexión - ${client.name}`;
-  const body = formatClientForEmail(client);
-  window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return errors;
 }
 
 function Field({ label, children }) {
@@ -316,6 +301,33 @@ function Field({ label, children }) {
 function ConfigForm({ type, form, setForm }) {
   const update = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
   const sapCredentials = Array.isArray(form.sapCredentials) ? form.sapCredentials : [];
+  const links = Array.isArray(form.links) ? form.links : [];
+
+  const addLink = () => {
+    setForm((prev) => ({
+      ...prev,
+      links: [...(Array.isArray(prev.links) ? prev.links : []), { id: crypto.randomUUID(), description: "", url: "" }],
+    }));
+  };
+
+  const updateLink = (linkId, field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      links: (Array.isArray(prev.links) ? prev.links : []).map((link) =>
+        link.id === linkId ? { ...link, [field]: value } : link
+      ),
+    }));
+  };
+
+  const deleteLink = (linkId) => {
+    setForm((prev) => {
+      const nextLinks = (Array.isArray(prev.links) ? prev.links : []).filter((link) => link.id !== linkId);
+      return {
+        ...prev,
+        links: nextLinks.length ? nextLinks : [{ id: crypto.randomUUID(), description: "", url: "" }],
+      };
+    });
+  };
 
   const addSapCredential = () => {
     setForm((prev) => ({
@@ -401,6 +413,40 @@ function ConfigForm({ type, form, setForm }) {
     );
   }
 
+  if (type === "Enlaces") {
+    return (
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-[#edf1f6] bg-[#f8fafd] p-4">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-[#182b56]">Enlaces</h3>
+              <p className="text-xs text-[#62718a]">Añade una o varias URLs con descripción. La descripción será el texto visible de cada enlace.</p>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={addLink} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#eaf4ff] hover:text-[#243e87]">
+              <Plus className="mr-2 h-4 w-4" /> Añadir enlace
+            </Button>
+          </div>
+
+          <div className="space-y-3">
+            {links.map((link, index) => (
+              <div key={link.id} className="grid grid-cols-1 gap-3 rounded-xl border border-[#edf1f6] bg-white p-3 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)_auto] md:items-end">
+                <Field label={`Descripción ${index + 1}`}>
+                  <Input value={link.description || ""} onChange={(e) => updateLink(link.id, "description", e.target.value)} placeholder="Ej. Manual de usuario" className={inputClass} />
+                </Field>
+                <Field label="URL completa">
+                  <Input value={link.url || ""} onChange={(e) => updateLink(link.id, "url", e.target.value)} placeholder="https://servidor/ruta/documento.docx" className={inputClass} />
+                </Field>
+                <Button type="button" variant="outline" size="sm" onClick={() => deleteLink(link.id)} className="rounded-xl border-red-400/40 bg-white text-red-600 hover:bg-red-50 hover:text-red-700">
+                  <Trash2 className="mr-2 h-4 w-4" /> Borrar
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-[180px_minmax(0,1fr)]">
       <Field label="Entorno *">
@@ -427,13 +473,13 @@ function DetailItem({ label, value, wide = false, copyValue }) {
   );
 }
 
-function ConfigDetails({ config }) {
+function ConfigDetails({ config, showPasswords = false }) {
   if (config.type === "VPN") {
     return (
       <div className="grid min-w-0 gap-x-8 gap-y-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
         <DetailItem label="VPN" value={config.vpnName} />
         <DetailItem label="Usuario" value={config.user} />
-        <DetailItem label="Password" value={maskPassword(config.password)} copyValue={config.password} />
+        <DetailItem label="Password" value={displayPassword(config.password, showPasswords)} copyValue={config.password} />
       </div>
     );
   }
@@ -453,7 +499,7 @@ function ConfigDetails({ config }) {
               {config.sapCredentials.map((credential, index) => (
                 <div key={credential.id || index} className="rounded-xl border border-[#edf1f6] bg-[#f8fafd] p-3 text-sm">
                   <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-[#182b56]">Usuario:</span><span className="min-w-0 break-words text-[#344767]">{credential.user || "—"}</span><CopyButton value={credential.user} /></div>
-                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-[#182b56]">Password:</span><span className="min-w-0 break-words text-[#344767]">{maskPassword(credential.password)}</span><CopyButton value={credential.password} /></div>
+                  <div className="flex min-w-0 items-center gap-1"><span className="font-semibold text-[#182b56]">Password:</span><span className="min-w-0 break-words text-[#344767]">{displayPassword(credential.password, showPasswords)}</span><CopyButton value={credential.password} /></div>
                 </div>
               ))}
             </div>
@@ -467,7 +513,33 @@ function ConfigDetails({ config }) {
     return (
       <div className="grid min-w-0 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
         <DetailItem label="Usuario" value={config.user} />
-        <DetailItem label="Password" value={maskPassword(config.password)} copyValue={config.password} />
+        <DetailItem label="Password" value={displayPassword(config.password, showPasswords)} copyValue={config.password} />
+      </div>
+    );
+  }
+
+  if (config.type === "Enlaces") {
+    const links = Array.isArray(config.links) ? config.links : [];
+
+    return (
+      <div className="grid min-w-0 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-3">
+        {links.length === 0 ? (
+          <span className="text-[#62718a]">No hay enlaces informados.</span>
+        ) : (
+          links.map((link) => (
+            <button
+              key={link.id}
+              type="button"
+              onClick={() => window.open(link.url, "_blank", "noopener,noreferrer")}
+              className="inline-flex min-w-0 items-center gap-2 rounded-xl border border-[#edf1f6] bg-[#f8fafd] px-3 py-2 text-left text-[#243e87] transition hover:border-[#67aef7] hover:bg-[#eaf4ff] hover:shadow-sm"
+              title={link.url}
+            >
+              {linkIconForUrl(link.url)}
+              <span className="min-w-0 truncate font-semibold">{link.description || link.url}</span>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-[#62718a]" />
+            </button>
+          ))
+        )}
       </div>
     );
   }
@@ -554,17 +626,20 @@ function LoginScreen() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f4f6f9] px-4 text-[#182b56]">
-      <div className="w-full max-w-xl rounded-3xl border border-[#edf1f6] bg-white p-6 shadow-2xl shadow-[#243e87]/10">
-        <h1 className="mb-2 text-2xl font-bold text-[#243e87]">
-          SAP Connectivity Manager
-        </h1>
+    <div className="flex min-h-screen items-center justify-center bg-[#243e87] px-4 text-[#182b56]">
+      <div className="flex w-full max-w-xl flex-col items-center gap-5">
+        <img src="/seidor-logo.png" alt="SEIDOR" className="h-16 w-auto object-contain" />
 
-        <p className="mb-6 text-sm text-[#62718a]">
-          Inicia sesión para acceder a la aplicación.
-        </p>
+        <div className="w-full rounded-3xl border border-white/20 bg-white p-6 shadow-2xl shadow-black/20">
+          <h1 className="mb-2 text-2xl font-bold text-[#243e87]">
+            SAP Connectivity Manager
+          </h1>
 
-        <div className="space-y-4">
+          <p className="mb-6 text-sm text-[#62718a]">
+            Inicia sesión para acceder a la aplicación.
+          </p>
+
+          <div className="space-y-4">
           <Field label="Email">
             <Input
               type="email"
@@ -627,6 +702,7 @@ function LoginScreen() {
           >
             {resetLoading ? "Enviando email..." : "¿Has olvidado tu contraseña?"}
           </button>
+          </div>
         </div>
       </div>
     </div>
@@ -648,16 +724,14 @@ export default function ConnectionManagerApp() {
   const [form, setForm] = useState(emptyForms.VPN);
   const [errors, setErrors] = useState([]);
   const [appError, setAppError] = useState("");
-  const [exportInfo, setExportInfo] = useState("");
+  const [clientInfo, setClientInfo] = useState("");
+  const [showPasswords, setShowPasswords] = useState(false);
 const [passwordRecovery, setPasswordRecovery] = useState(false);
 const [newPassword, setNewPassword] = useState("");
 const [confirmPassword, setConfirmPassword] = useState("");
 const [recoveryError, setRecoveryError] = useState("");
 const [recoveryMessage, setRecoveryMessage] = useState("");
 const [recoveryLoading, setRecoveryLoading] = useState(false);
-  const importAllInputRef = useRef(null);
-  const importClientInputRef = useRef(null);
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -772,13 +846,33 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const selectedClient = clients.find((client) => client.id === selectedClientId) || clients[0];
 
+  useEffect(() => {
+    setShowPasswords(false);
+  }, [selectedClientId]);
+
+  const selectedClientHasPasswords = Boolean(
+    selectedClient?.configs?.some((config) => ["VPN", "SAP", "OSS"].includes(config.type))
+  );
+
+  const filteredClients = useMemo(() => {
+    const term = clientName.trim().toLowerCase();
+    if (!term) return clients;
+    return clients.filter((client) => client.name.toLowerCase().includes(term));
+  }, [clients, clientName]);
+
   const filteredConfigs = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return (selectedClient?.configs || []).filter((config) => {
-      const matchesType = activeType === "Todos" || config.type === activeType;
-      const searchable = JSON.stringify(config).toLowerCase();
-      return matchesType && (!term || searchable.includes(term));
-    });
+    return (selectedClient?.configs || [])
+      .filter((config) => {
+        const matchesType = activeType === "Todos" || config.type === activeType;
+        const searchable = JSON.stringify(config).toLowerCase();
+        return matchesType && (!term || searchable.includes(term));
+      })
+      .sort((a, b) => {
+        if (a.type === "Enlaces" && b.type !== "Enlaces") return -1;
+        if (a.type !== "Enlaces" && b.type === "Enlaces") return 1;
+        return 0;
+      });
   }, [selectedClient, activeType, search]);
 
   const insertClient = async (client) => {
@@ -809,7 +903,17 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
   const addClient = async () => {
     const name = clientName.trim();
     if (!name) return;
+
     setAppError("");
+    setClientInfo("");
+
+    const normalizedName = name.toLowerCase().replace(/\s+/g, " ");
+    const alreadyExists = clients.some((client) => client.name.trim().toLowerCase().replace(/\s+/g, " ") === normalizedName);
+
+    if (alreadyExists) {
+      setClientInfo(`Ya existe un cliente con el nombre "${name}". No se ha creado de nuevo.`);
+      return;
+    }
 
     try {
       const newClient = await insertClient({ name, configs: [] });
@@ -835,126 +939,7 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
     });
   };
 
-  const exportAll = async () => {
-    setAppError("");
-    setExportInfo("");
-    try {
-      const encryptedClients = await encryptClientsForExport(clients);
-      await saveJsonFile(`conexiones-cifradas-todas-${new Date().toISOString().slice(0, 10)}.json`, {
-        version: 2,
-        encrypted: true,
-        scope: "all",
-        exportedAt: new Date().toISOString(),
-        clients: encryptedClients,
-      });
-      setExportInfo("Exportación cifrada completada correctamente.");
-    } catch (error) {
-      if (error?.name !== "AbortError") setAppError("No se ha podido exportar el archivo JSON cifrado.");
-    }
-  };
-
-  const exportSelectedClient = async () => {
-    if (!selectedClient) return;
-    setAppError("");
-    setExportInfo("");
-    try {
-      const encryptedConfigs = await encryptConfigs(selectedClient.configs);
-      await saveJsonFile(`conexiones-cifradas-${sanitizeFileName(selectedClient.name)}-${new Date().toISOString().slice(0, 10)}.json`, {
-        version: 2,
-        encrypted: true,
-        scope: "client",
-        exportedAt: new Date().toISOString(),
-        client: { ...selectedClient, configs: encryptedConfigs },
-      });
-      setExportInfo("Exportación cifrada del cliente completada correctamente.");
-    } catch (error) {
-      if (error?.name !== "AbortError") setAppError("No se ha podido exportar el archivo JSON cifrado del cliente.");
-    }
-  };
-
-  const readJsonFile = (file, onSuccess) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result || "{}"));
-        onSuccess(parsed);
-        setAppError("");
-        setExportInfo("");
-      } catch {
-        setAppError("No se ha podido importar el JSON. Revisa que el archivo tenga formato JSON válido.");
-      }
-    };
-    reader.onerror = () => setAppError("No se ha podido leer el archivo seleccionado.");
-    reader.readAsText(file, "UTF-8");
-  };
-
-  const importAll = (file) => {
-    readJsonFile(file, async (data) => {
-      const importedClients = Array.isArray(data?.clients) ? data.clients : Array.isArray(data) ? data : [];
-      if (!importedClients.length) {
-        setAppError("El JSON no contiene una lista de clientes válida.");
-        return;
-      }
-
-      try {
-        const normalizedClients = await Promise.all(
-          importedClients.map(async (client) => {
-            const normalizedClient = ensureClient(client);
-            return { name: normalizedClient.name, configs: await encryptConfigs(normalizedClient.configs) };
-          })
-        );
-
-        const { error: deleteError } = await supabase.from(CLIENTS_TABLE).delete().neq("id", "00000000-0000-0000-0000-000000000000");
-        if (deleteError) throw deleteError;
-
-        const { data: inserted, error: insertError } = await supabase
-          .from(CLIENTS_TABLE)
-          .insert(normalizedClients)
-          .select("id,name,configs,created_at");
-
-        if (insertError) throw insertError;
-
-        const loadedClients = await Promise.all(
-          (inserted || []).map(async (row) => {
-            const client = mapDbClient(row);
-            return { ...client, configs: await decryptConfigs(client.configs) };
-          })
-        );
-
-        setClients(loadedClients);
-        setSelectedClientId(loadedClients[0]?.id || null);
-        setActiveType("Todos");
-        setSearch("");
-      } catch (error) {
-        setAppError(error.message);
-      }
-    });
-  };
-
-  const importSelectedClient = (file) => {
-    readJsonFile(file, async (data) => {
-      if (!selectedClient) return;
-      const importedConfigs = Array.isArray(data?.client?.configs) ? data.client.configs : Array.isArray(data?.configs) ? data.configs : [];
-      if (!importedConfigs.length && !Array.isArray(data?.client?.configs) && !Array.isArray(data?.configs)) {
-        setAppError("El JSON no contiene configuraciones válidas para un cliente.");
-        return;
-      }
-
-      try {
-        const normalizedConfigs = ensureClient({ configs: importedConfigs }).configs;
-        const decryptedOrPlainConfigs = await decryptConfigs(normalizedConfigs);
-        const updatedClient = await updateClientConfigs(selectedClient.id, decryptedOrPlainConfigs);
-        setClients((prev) => prev.map((client) => client.id === updatedClient.id ? updatedClient : client));
-        setActiveType("Todos");
-        setSearch("");
-      } catch (error) {
-        setAppError(error.message);
-      }
-    });
-  };
-
-  const openCreateDialog = () => {
+const openCreateDialog = () => {
     setEditingConfig(null);
     setSelectedType("VPN");
     setForm(emptyForms.VPN);
@@ -1007,6 +992,177 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
       setClients((prev) => prev.map((client) => client.id === updatedClient.id ? updatedClient : client));
     } catch (error) {
       setAppError(error.message);
+    }
+  };
+
+  const downloadClientPdf = async () => {
+    if (!selectedClient) return;
+
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 14;
+      const contentWidth = pageWidth - margin * 2;
+      let y = 16;
+
+      const colors = {
+        primary: [36, 62, 135],
+        primaryLight: [103, 174, 247],
+        background: [244, 246, 249],
+        card: [255, 255, 255],
+        cardSoft: [248, 250, 253],
+        border: [237, 241, 246],
+        text: [24, 43, 86],
+        muted: [98, 113, 138],
+        white: [255, 255, 255],
+      };
+
+      const sanitizePdfFileName = (value) =>
+        String(value || "cliente")
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9áéíóúñü_-]+/gi, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "") || "cliente";
+
+      const ensureSpace = (requiredHeight = 20) => {
+        if (y + requiredHeight <= pageHeight - margin) return;
+        pdf.addPage();
+        y = 16;
+      };
+
+      const drawHeader = () => {
+        pdf.setFillColor(...colors.primary);
+        pdf.roundedRect(margin, y, contentWidth, 24, 4, 4, "F");
+        pdf.setTextColor(...colors.white);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(15);
+        pdf.text("SAP Connectivity Manager", margin + 6, y + 9);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        pdf.text("Exportación de configuraciones del cliente", margin + 6, y + 16);
+        y += 32;
+      };
+
+      const drawClientSummary = () => {
+        pdf.setFillColor(...colors.card);
+        pdf.setDrawColor(...colors.border);
+        pdf.roundedRect(margin, y, contentWidth, 24, 4, 4, "FD");
+        pdf.setTextColor(...colors.primary);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(12);
+        pdf.text(`Cliente: ${selectedClient.name || "—"}`, margin + 5, y + 8);
+        pdf.setTextColor(...colors.muted);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(9);
+        const exportedAt = new Date().toLocaleString("es-ES");
+        pdf.text(`Configuraciones: ${selectedClient.configs?.length || 0}`, margin + 5, y + 15);
+        pdf.text(`Generado: ${exportedAt}`, margin + 74, y + 15);
+        pdf.text(`Passwords: ${showPasswords ? "visibles" : "ocultas"}`, margin + 5, y + 21);
+        y += 32;
+      };
+
+      const drawBadge = (type, x, badgeY) => {
+        pdf.setFillColor(234, 244, 255);
+        pdf.setDrawColor(103, 174, 247);
+        pdf.roundedRect(x, badgeY, 28, 7, 2, 2, "FD");
+        pdf.setTextColor(...colors.primary);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(7.5);
+        pdf.text(type || "—", x + 3, badgeY + 4.8);
+      };
+
+      const writeWrappedText = (text, x, textY, maxWidth, options = {}) => {
+        const fontSize = options.fontSize || 8.5;
+        const lineHeight = options.lineHeight || 4.2;
+        pdf.setFontSize(fontSize);
+        const lines = pdf.splitTextToSize(normalizePdfValue(text), maxWidth);
+        lines.forEach((line) => {
+          pdf.text(line, x, textY);
+          textY += lineHeight;
+        });
+        return { nextY: textY, lines: lines.length };
+      };
+
+      const drawConfigCard = (config, index) => {
+        const rows = buildPdfRowsForConfig(config, showPasswords);
+        const rowHeights = rows.map(([_label, value]) => {
+          const valueLines = pdf.splitTextToSize(normalizePdfValue(value), contentWidth - 46);
+          return Math.max(8, valueLines.length * 4.2 + 3);
+        });
+        const cardHeight = 18 + rowHeights.reduce((sum, height) => sum + height, 0) + 7;
+        ensureSpace(cardHeight + 6);
+
+        const cardY = y;
+        pdf.setFillColor(...colors.card);
+        pdf.setDrawColor(...colors.border);
+        pdf.roundedRect(margin, cardY, contentWidth, cardHeight, 4, 4, "FD");
+
+        pdf.setTextColor(...colors.text);
+        pdf.setFont("helvetica", "bold");
+        pdf.setFontSize(11);
+        const title =
+          config.type === "SAP" ? config.description || "Sistema SAP" :
+          config.type === "VPN" ? config.vpnName || "VPN sin nombre" :
+          config.type === "Fiori" ? `Fiori ${config.environment || ""}`.trim() :
+          config.type === "Enlaces" ? "Enlaces" :
+          config.type || "Configuración";
+        pdf.text(`${index + 1}. ${title}`, margin + 5, y + 8);
+        drawBadge(config.type, pageWidth - margin - 34, y + 3.2);
+        y += 17;
+
+        rows.forEach(([label, value], rowIndex) => {
+          const rowHeight = rowHeights[rowIndex];
+          if (rowIndex % 2 === 0) {
+            pdf.setFillColor(...colors.cardSoft);
+            pdf.roundedRect(margin + 4, y - 4, contentWidth - 8, rowHeight, 2, 2, "F");
+          }
+
+          pdf.setTextColor(...colors.primary);
+          pdf.setFont("helvetica", "bold");
+          pdf.setFontSize(8.5);
+          pdf.text(`${label}:`, margin + 7, y + 1);
+
+          pdf.setTextColor(...colors.text);
+          pdf.setFont("helvetica", "normal");
+          writeWrappedText(value, margin + 44, y + 1, contentWidth - 50, { fontSize: 8.5 });
+          y += rowHeight;
+        });
+
+        y = cardY + cardHeight + 6;
+      };
+
+      drawHeader();
+      drawClientSummary();
+
+      if (!selectedClient.configs || selectedClient.configs.length === 0) {
+        pdf.setTextColor(...colors.muted);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(10);
+        pdf.text("No hay configuraciones registradas para este cliente.", margin, y);
+      } else {
+        const orderedConfigs = [...selectedClient.configs].sort((a, b) => {
+          if (a.type === "Enlaces" && b.type !== "Enlaces") return -1;
+          if (a.type !== "Enlaces" && b.type === "Enlaces") return 1;
+          return 0;
+        });
+        orderedConfigs.forEach((config, index) => drawConfigCard(config, index));
+      }
+
+      const totalPages = pdf.internal.getNumberOfPages();
+      for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+        pdf.setPage(pageNumber);
+        pdf.setTextColor(...colors.muted);
+        pdf.setFont("helvetica", "normal");
+        pdf.setFontSize(8);
+        pdf.text(`Página ${pageNumber} de ${totalPages}`, pageWidth - margin - 24, pageHeight - 8);
+      }
+
+      pdf.save(`configuraciones-${sanitizePdfFileName(selectedClient.name)}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      setAppError("No se ha podido generar el PDF. Revisa que tengas instalada la dependencia jspdf.");
     }
   };
 
@@ -1101,10 +1257,7 @@ if (passwordRecovery) {
   }
 
   return (
-    <div className="min-h-screen w-full overflow-x-hidden bg-[#f4f6f9] px-1 py-0 text-[#182b56] sm:px-2 md:px-3">
-      <input ref={importAllInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importAll(e.target.files?.[0]); e.target.value = ""; }} />
-      <input ref={importClientInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(e) => { importSelectedClient(e.target.files?.[0]); e.target.value = ""; }} />
-
+    <div className="min-h-screen w-full overflow-x-hidden bg-[#f4f6f9] px-0 py-0 text-[#182b56]">
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mx-auto flex w-full max-w-none flex-col gap-4">
         <header className="flex w-full flex-col gap-4 bg-[#243e87] px-5 py-3 shadow-lg shadow-[#243e87]/20 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
@@ -1116,29 +1269,29 @@ if (passwordRecovery) {
             </div>
           </div>
           <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
-            <Button variant="outline" size="icon" title="Exportar todo cifrado" aria-label="Exportar todo cifrado" onClick={exportAll} className={iconButtonClass}><Download className="h-4 w-4" /></Button>
-            <Button variant="outline" size="icon" title="Importar todo" aria-label="Importar todo" onClick={() => importAllInputRef.current?.click()} className={iconButtonClass}><Upload className="h-4 w-4" /></Button>
             <Button onClick={openCreateDialog} className="h-9 rounded-xl bg-[#67aef7] px-3 text-sm text-[#182b56] shadow-lg shadow-[#1d326f]/20 hover:bg-[#8cc4fb]" disabled={!selectedClient}><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>
             <Button variant="outline" size="icon" title="Salir" aria-label="Salir" onClick={() => supabase.auth.signOut()} className={iconButtonClass}><LogOut className="h-4 w-4" /></Button>
           </div>
         </header>
 
-        {appError && <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">{appError}</div>}
-        {exportInfo && <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{exportInfo}</div>}
-
-        <main className="grid w-full grid-cols-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+        {appError && <div className="mx-3 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200 sm:mx-4 md:mx-5">{appError}</div>}
+        <main className="grid w-full grid-cols-1 gap-4 px-3 py-4 sm:px-4 md:px-5 xl:grid-cols-[340px_minmax(0,1fr)]">
           <Card className={`${cardClass} min-w-0`}>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg text-[#243e87]"><Building2 className="h-5 w-5" /> Clientes</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="flex min-w-0 gap-2">
-                <Input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Nombre cliente" onKeyDown={(e) => e.key === "Enter" && addClient()} className={inputClass} />
+                <Input value={clientName} onChange={(e) => { setClientName(e.target.value); setClientInfo(""); }} placeholder="Buscar o crear cliente" onKeyDown={(e) => e.key === "Enter" && addClient()} className={inputClass} />
                 <Button onClick={addClient} className="shrink-0 rounded-xl bg-[#243e87] text-white hover:bg-[#2d4a9a]"><Plus className="h-4 w-4" /></Button>
               </div>
+              {clientInfo && <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{clientInfo}</div>}
+
               {dataLoading ? (
                 <div className="rounded-2xl border border-[#edf1f6] bg-[#f8fafd] p-4 text-sm text-[#62718a]">Cargando clientes...</div>
               ) : (
                 <div className="space-y-2">
-                  {clients.map((client) => (
+                  {filteredClients.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-[#67aef7]/40 bg-[#f8fafd] p-4 text-sm text-[#62718a]">No hay clientes que coincidan con la búsqueda.</div>
+                  ) : filteredClients.map((client) => (
                     <div key={client.id} className={`flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selectedClientId === client.id ? "border-[#67aef7]/60 bg-[#eaf4ff] shadow-sm" : "border-[#edf1f6] bg-[#f8fafd] hover:bg-[#f4f9ff]"}`}>
                       <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedClientId(client.id)}>
                         <div className="truncate font-semibold text-[#182b56]">{client.name}</div>
@@ -1157,21 +1310,45 @@ if (passwordRecovery) {
               <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
                   <CardTitle className="min-w-0 break-words text-lg text-[#243e87] sm:text-xl">Configuraciones de {selectedClient?.name || "—"}</CardTitle>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="outline" size="icon" title="Exportar cliente cifrado" aria-label="Exportar cliente cifrado" onClick={exportSelectedClient} className={iconButtonClass} disabled={!selectedClient}><Download className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" title="Importar cliente" aria-label="Importar cliente" onClick={() => importClientInputRef.current?.click()} className={iconButtonClass} disabled={!selectedClient}><Upload className="h-4 w-4" /></Button>
-                    <Button variant="outline" size="icon" title="Compartir cliente por email" aria-label="Compartir cliente por email" onClick={() => shareClientByEmail(selectedClient)} className={iconButtonClass} disabled={!selectedClient}><Mail className="h-4 w-4" /></Button>
-                  </div>
                 </div>
-                <div className="relative w-full xl:max-w-sm">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#67aef7]" />
-                  <Input className={`${inputClass} pl-9`} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar configuración..." />
+                <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end xl:max-w-xl">
+                  {selectedClientHasPasswords && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowPasswords((previousValue) => !previousValue)}
+                      className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#eaf4ff] hover:text-[#243e87]"
+                    >
+                      {showPasswords ? (
+                        <>
+                          <EyeOff className="mr-2 h-4 w-4" /> Ocultar passwords
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="mr-2 h-4 w-4" /> Mostrar passwords
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={downloadClientPdf}
+                    disabled={!selectedClient}
+                    className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#eaf4ff] hover:text-[#243e87] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FileDown className="mr-2 h-4 w-4" /> Descargar PDF
+                  </Button>
+                  <div className="relative w-full sm:max-w-sm">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#67aef7]" />
+                    <Input className={`${inputClass} pl-9`} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar configuración..." />
+                  </div>
                 </div>
               </div>
               <Tabs value={activeType} onValueChange={setActiveType} className="w-full">
                 <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-2xl bg-[#f8fafd] p-1">
                   {["Todos", ...CONNECTION_TYPES].map((type) => (
-                    <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-[#344767] transition hover:bg-[#f4f9ff] hover:text-[#243e87] data-[state=active]:bg-[#243e87] data-[state=active]:text-white data-[state=active]:hover:bg-[#2d4a9a] data-[state=active]:hover:text-white">
+                    <TabsTrigger key={type} value={type} className="min-w-fit rounded-xl px-3 text-[#344767] transition hover:bg-[#dbeafe] hover:text-[#243e87] hover:shadow-sm data-[state=active]:bg-[#243e87] data-[state=active]:text-white data-[state=active]:shadow-md data-[state=active]:hover:bg-[#2d4a9a] data-[state=active]:hover:text-white">
                       {type !== "Todos" && <span className="mr-2">{typeIcon(type)}</span>}{type}
                     </TabsTrigger>
                   ))}
@@ -1194,13 +1371,14 @@ if (passwordRecovery) {
                           {config.type === "VPN" && <span className="break-words text-lg font-semibold text-[#182b56]">{config.vpnName || "VPN sin nombre"}</span>}
                           {config.type === "OSS" && <span className="text-lg font-semibold text-[#182b56]">OSS</span>}
                           {config.type === "Fiori" && <span className="text-lg font-semibold text-[#182b56]">Fiori {config.environment}</span>}
+                          {config.type === "Enlaces" && <span className="text-lg font-semibold text-[#182b56]">Enlaces</span>}
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
                           <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
                           <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
                         </div>
                       </div>
-                      <ConfigDetails config={config} />
+                      <ConfigDetails config={config} showPasswords={showPasswords} />
                     </motion.div>
                   ))}
                 </div>
