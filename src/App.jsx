@@ -1,6 +1,6 @@
 
 import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "./supabaseClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, LogOut, Copy, Check, Eye, EyeOff, FileDown, Link2, FileText, FileSpreadsheet, FileImage, FileArchive, File, Presentation } from "lucide-react";
+import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, LogOut, Copy, Check, Eye, EyeOff, FileDown, Share2, Link2, FileText, FileSpreadsheet, FileImage, FileArchive, File, Presentation } from "lucide-react";
 
 const CONNECTION_TYPES = ["VPN", "SAP", "OSS", "Fiori", "Enlaces"];
 const FIORI_ENVIRONMENTS = ["DES", "QA", "PRD"];
@@ -35,6 +35,14 @@ const emptyForms = {
 const inputClass = "h-10 w-full rounded-xl border-[#dce2ea] bg-white text-[#182b56] placeholder:text-[#8b98aa] focus-visible:ring-[#67aef7]";
 const cardClass = "rounded-3xl border border-[#edf1f6] bg-white/95 text-[#182b56] shadow-xl shadow-[#243e87]/10 backdrop-blur";
 const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]";
+
+const sortClientsByName = (clientList = []) =>
+  [...clientList].sort((a, b) =>
+    String(a?.name || "").localeCompare(String(b?.name || ""), "es", {
+      sensitivity: "base",
+      numeric: true,
+    })
+  );
 
 function typeIcon(type) {
   const className = "h-4 w-4 shrink-0";
@@ -235,6 +243,9 @@ function mapDbClient(row) {
   return {
     id: row.id,
     name: row.name,
+    userId: row.user_id || null,
+    isShared: Boolean(row.is_shared),
+    sharedByEmail: row.shared_by_email || "",
     configs: Array.isArray(row.configs) ? row.configs.map(ensureConfig) : [],
   };
 }
@@ -724,6 +735,9 @@ export default function ConnectionManagerApp() {
   const [form, setForm] = useState(emptyForms.VPN);
   const [errors, setErrors] = useState([]);
   const [appError, setAppError] = useState("");
+  const [appInfo, setAppInfo] = useState("");
+  const [appInfoKey, setAppInfoKey] = useState(0);
+  const [confirmDialog, setConfirmDialog] = useState({ open: false });
   const [clientInfo, setClientInfo] = useState("");
   const [showPasswords, setShowPasswords] = useState(false);
 const [passwordRecovery, setPasswordRecovery] = useState(false);
@@ -732,6 +746,34 @@ const [confirmPassword, setConfirmPassword] = useState("");
 const [recoveryError, setRecoveryError] = useState("");
 const [recoveryMessage, setRecoveryMessage] = useState("");
 const [recoveryLoading, setRecoveryLoading] = useState(false);
+
+  const showAppInfo = (message) => {
+    setAppInfo(message);
+    setAppInfoKey(Date.now());
+  };
+
+  const openConfirmDialog = ({ title, message, confirmLabel = "Confirmar", variant = "danger", onConfirm }) => {
+    setConfirmDialog({ open: true, title, message, confirmLabel, variant, onConfirm });
+  };
+
+  const closeConfirmDialog = () => {
+    setConfirmDialog({ open: false });
+  };
+
+  const handleConfirmDialog = async () => {
+    const onConfirm = confirmDialog.onConfirm;
+    closeConfirmDialog();
+    if (typeof onConfirm === "function") {
+      await onConfirm();
+    }
+  };
+
+  useEffect(() => {
+    if (!appInfo) return undefined;
+    const timeoutId = window.setTimeout(() => setAppInfo(""), 4500);
+    return () => window.clearTimeout(timeoutId);
+  }, [appInfo, appInfoKey]);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
@@ -815,7 +857,7 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
     try {
       const { data, error } = await supabase
         .from(CLIENTS_TABLE)
-        .select("id,name,configs,created_at,updated_at")
+        .select("*")
         .order("created_at", { ascending: true });
 
       if (error) throw error;
@@ -827,8 +869,9 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
         })
       );
 
-      setClients(loadedClients);
-      setSelectedClientId((current) => loadedClients.some((client) => client.id === current) ? current : loadedClients[0]?.id || null);
+      const sortedClients = sortClientsByName(loadedClients);
+      setClients(sortedClients);
+      setSelectedClientId((current) => sortedClients.some((client) => client.id === current) ? current : sortedClients[0]?.id || null);
     } catch (error) {
       setAppError(error.message);
       setClients([]);
@@ -854,10 +897,32 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
     selectedClient?.configs?.some((config) => ["VPN", "SAP", "OSS"].includes(config.type))
   );
 
+  const isClientOwner = (client) => !client?.userId || client.userId === session?.user?.id;
+  const selectedClientIsEditable = Boolean(selectedClient && isClientOwner(selectedClient));
+
+  const clientCardClass = (client) => {
+    const selected = selectedClientId === client.id;
+    const sharedByCurrentUser = client.isShared && isClientOwner(client);
+    const sharedByOtherUser = client.isShared && !isClientOwner(client);
+
+    if (sharedByCurrentUser) {
+      return `flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selected ? "border-emerald-500/70 bg-emerald-100 shadow-sm" : "border-emerald-400/50 bg-emerald-50 hover:border-emerald-500/70 hover:bg-emerald-100 hover:shadow-sm"}`;
+    }
+
+    if (sharedByOtherUser) {
+      return `flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selected ? "border-amber-500/70 bg-amber-100 shadow-sm" : "border-amber-400/50 bg-amber-50 hover:border-amber-500/70 hover:bg-amber-100 hover:shadow-sm"}`;
+    }
+
+    return `flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selected ? "border-[#67aef7]/70 bg-[#dbeafe] shadow-sm" : "border-[#edf1f6] bg-[#f8fafd] hover:border-[#67aef7]/60 hover:bg-[#dbeafe] hover:shadow-sm"}`;
+  };
+
   const filteredClients = useMemo(() => {
     const term = clientName.trim().toLowerCase();
-    if (!term) return clients;
-    return clients.filter((client) => client.name.toLowerCase().includes(term));
+    const matchingClients = !term
+      ? clients
+      : clients.filter((client) => client.name.toLowerCase().includes(term));
+
+    return sortClientsByName(matchingClients);
   }, [clients, clientName]);
 
   const filteredConfigs = useMemo(() => {
@@ -879,8 +944,14 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
     const encryptedConfigs = await encryptConfigs(client.configs);
     const { data, error } = await supabase
       .from(CLIENTS_TABLE)
-      .insert({ name: client.name, configs: encryptedConfigs })
-      .select("id,name,configs")
+      .insert({
+        name: client.name,
+        configs: encryptedConfigs,
+        user_id: session?.user?.id,
+        is_shared: false,
+        shared_by_email: "",
+      })
+      .select("*")
       .single();
 
     if (error) throw error;
@@ -893,7 +964,7 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
       .from(CLIENTS_TABLE)
       .update({ configs: encryptedConfigs, updated_at: new Date().toISOString() })
       .eq("id", clientId)
-      .select("id,name,configs")
+      .select("*")
       .single();
 
     if (error) throw error;
@@ -905,6 +976,7 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
     if (!name) return;
 
     setAppError("");
+    setAppInfo("");
     setClientInfo("");
 
     const normalizedName = name.toLowerCase().replace(/\s+/g, " ");
@@ -917,9 +989,10 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
 
     try {
       const newClient = await insertClient({ name, configs: [] });
-      setClients((prev) => [...prev, newClient]);
+      setClients((prev) => sortClientsByName([...prev, newClient]));
       setSelectedClientId(newClient.id);
       setClientName("");
+      showAppInfo(`El cliente "${newClient.name}" se ha creado correctamente.`);
     } catch (error) {
       setAppError(error.message);
     }
@@ -927,16 +1000,73 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const deleteClient = async (clientId) => {
     setAppError("");
-    const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", clientId);
+    setAppInfo("");
+    const clientToDelete = clients.find((client) => client.id === clientId);
+    if (clientToDelete && !isClientOwner(clientToDelete)) {
+      setAppError("No puedes borrar un cliente compartido por otro usuario.");
+      return;
+    }
+
+    openConfirmDialog({
+      title: "Borrar cliente",
+      message: `¿Seguro que quieres borrar el cliente "${clientToDelete?.name || "seleccionado"}" y todas sus configuraciones? Esta acción no se puede deshacer.`,
+      confirmLabel: "Borrar cliente",
+      variant: "danger",
+      onConfirm: async () => {
+        const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", clientId);
+        if (error) {
+          setAppError(error.message);
+          return;
+        }
+        setClients((prev) => {
+          const next = prev.filter((client) => client.id !== clientId);
+          if (selectedClientId === clientId) setSelectedClientId(next[0]?.id || null);
+          return next;
+        });
+        showAppInfo(`El cliente "${clientToDelete?.name || "seleccionado"}" se ha borrado correctamente.`);
+      },
+    });
+  };
+
+  const toggleClientSharing = async (client) => {
+    if (!client || !isClientOwner(client)) return;
+
+    setAppError("");
+    setAppInfo("");
+    const nextSharedValue = !client.isShared;
+
+    const { error } = await supabase
+      .from(CLIENTS_TABLE)
+      .update({
+        is_shared: nextSharedValue,
+        shared_by_email: nextSharedValue ? session?.user?.email || "" : "",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", client.id);
+
     if (error) {
       setAppError(error.message);
       return;
     }
-    setClients((prev) => {
-      const next = prev.filter((client) => client.id !== clientId);
-      if (selectedClientId === clientId) setSelectedClientId(next[0]?.id || null);
-      return next;
-    });
+
+    setClients((prev) =>
+      sortClientsByName(
+        prev.map((item) =>
+          item.id === client.id
+            ? {
+                ...item,
+                isShared: nextSharedValue,
+                sharedByEmail: nextSharedValue ? session?.user?.email || "" : "",
+              }
+            : item
+        )
+      )
+    );
+    showAppInfo(
+      nextSharedValue
+        ? `Las configuraciones de "${client.name}" se han compartido con todos los usuarios de la app.`
+        : `Las configuraciones de "${client.name}" han dejado de estar compartidas.`
+    );
   };
 
 const openCreateDialog = () => {
@@ -963,7 +1093,11 @@ const openCreateDialog = () => {
   };
 
   const saveConfig = async () => {
-    if (!selectedClient) return;
+    if (!selectedClient || !selectedClientIsEditable) return;
+
+    setAppError("");
+    setAppInfo("");
+    const wasEditingConfig = Boolean(editingConfig);
 
     const validationErrors = validateConfig(selectedType, form);
     if (validationErrors.length) {
@@ -979,20 +1113,43 @@ const openCreateDialog = () => {
       const updatedClient = await updateClientConfigs(selectedClient.id, nextConfigs);
       setClients((prev) => prev.map((client) => client.id === updatedClient.id ? updatedClient : client));
       setDialogOpen(false);
+      showAppInfo(
+        wasEditingConfig
+          ? `La configuración de "${selectedClient.name}" se ha modificado correctamente.`
+          : `Se ha creado una nueva configuración para "${selectedClient.name}".`
+      );
     } catch (error) {
       setErrors([error.message]);
     }
   };
 
   const deleteConfig = async (configId) => {
-    if (!selectedClient) return;
-    try {
-      const nextConfigs = selectedClient.configs.filter((config) => config.id !== configId);
-      const updatedClient = await updateClientConfigs(selectedClient.id, nextConfigs);
-      setClients((prev) => prev.map((client) => client.id === updatedClient.id ? updatedClient : client));
-    } catch (error) {
-      setAppError(error.message);
-    }
+    if (!selectedClient || !selectedClientIsEditable) return;
+    setAppError("");
+    setAppInfo("");
+
+    const configToDelete = selectedClient.configs.find((config) => config.id === configId);
+    const configName =
+      configToDelete?.type === "SAP" ? configToDelete.description || "SAP" :
+      configToDelete?.type === "VPN" ? configToDelete.vpnName || "VPN" :
+      configToDelete?.type === "Fiori" ? `Fiori ${configToDelete.environment || ""}`.trim() :
+      configToDelete?.type || "configuración";
+
+    openConfirmDialog({
+      title: "Borrar configuración",
+      message: `¿Seguro que quieres borrar la configuración "${configName}" del cliente "${selectedClient.name}"? Esta acción no se puede deshacer.`,
+      confirmLabel: "Borrar configuración",
+      variant: "danger",
+      onConfirm: async () => {
+        try {
+          const nextConfigs = selectedClient.configs.filter((config) => config.id !== configId);
+          const updatedClient = await updateClientConfigs(selectedClient.id, nextConfigs);
+          setClients((prev) => prev.map((client) => client.id === updatedClient.id ? updatedClient : client));
+        } catch (error) {
+          setAppError(error.message);
+        }
+      },
+    });
   };
 
   const downloadClientPdf = async () => {
@@ -1269,12 +1426,40 @@ if (passwordRecovery) {
             </div>
           </div>
           <div className="flex w-full flex-wrap justify-center gap-2 sm:w-auto sm:justify-end">
-            <Button onClick={openCreateDialog} className="h-9 rounded-xl bg-[#67aef7] px-3 text-sm text-[#182b56] shadow-lg shadow-[#1d326f]/20 hover:bg-[#8cc4fb]" disabled={!selectedClient}><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>
+            {selectedClientIsEditable && <Button onClick={openCreateDialog} className="h-9 rounded-xl bg-[#67aef7] px-3 text-sm text-[#182b56] shadow-lg shadow-[#1d326f]/20 hover:bg-[#8cc4fb]"><Plus className="mr-2 h-4 w-4" /> Nueva configuración</Button>}
             <Button variant="outline" size="icon" title="Salir" aria-label="Salir" onClick={() => supabase.auth.signOut()} className={iconButtonClass}><LogOut className="h-4 w-4" /></Button>
           </div>
         </header>
 
         {appError && <div className="mx-3 rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200 sm:mx-4 md:mx-5">{appError}</div>}
+        <AnimatePresence>
+          {appInfo && (
+            <motion.div
+              key={appInfoKey}
+              initial={{ opacity: 0, x: 48, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 48, y: 10, scale: 0.96 }}
+              transition={{ duration: 0.28, ease: "easeOut" }}
+              className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-md overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-2xl shadow-emerald-950/20"
+            >
+              <div className="flex items-start gap-3 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 p-4 pr-5">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+                  <Check className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-emerald-800">Acción realizada correctamente</div>
+                  <div className="mt-0.5 text-sm leading-relaxed text-[#344767]">{appInfo}</div>
+                </div>
+              </div>
+              <motion.div
+                initial={{ width: "100%" }}
+                animate={{ width: "0%" }}
+                transition={{ duration: 4.5, ease: "linear" }}
+                className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <main className="grid w-full grid-cols-1 gap-4 px-3 py-4 sm:px-4 md:px-5 xl:grid-cols-[340px_minmax(0,1fr)]">
           <Card className={`${cardClass} min-w-0`}>
             <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg text-[#243e87]"><Building2 className="h-5 w-5" /> Clientes</CardTitle></CardHeader>
@@ -1292,12 +1477,36 @@ if (passwordRecovery) {
                   {filteredClients.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-[#67aef7]/40 bg-[#f8fafd] p-4 text-sm text-[#62718a]">No hay clientes que coincidan con la búsqueda.</div>
                   ) : filteredClients.map((client) => (
-                    <div key={client.id} className={`flex min-w-0 items-center justify-between rounded-2xl border p-3 transition ${selectedClientId === client.id ? "border-[#67aef7]/60 bg-[#eaf4ff] shadow-sm" : "border-[#edf1f6] bg-[#f8fafd] hover:bg-[#f4f9ff]"}`}>
+                    <div key={client.id} className={clientCardClass(client)}>
                       <button className="min-w-0 flex-1 text-left" onClick={() => setSelectedClientId(client.id)}>
                         <div className="truncate font-semibold text-[#182b56]">{client.name}</div>
-                        <div className="text-xs text-[#62718a]">{client.configs.length} configuraciones</div>
+                        <div className="mt-1 min-w-0 space-y-0.5">
+                          <div className="text-xs text-[#62718a]">{client.configs.length} configuraciones</div>
+                          {client.isShared && !isClientOwner(client) && (
+                            <div className="min-w-0 truncate text-right text-xs italic text-[#8b98aa]">
+                              Compartido por {client.sharedByEmail || "otro usuario"}
+                            </div>
+                          )}
+                          {client.isShared && isClientOwner(client) && (
+                            <div className="text-right text-xs font-medium text-emerald-700">Compartido</div>
+                          )}
+                        </div>
                       </button>
-                      <Button variant="ghost" size="icon" onClick={() => deleteClient(client.id)} className="shrink-0 rounded-xl text-[#62718a] hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></Button>
+                      {isClientOwner(client) && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title={client.isShared ? "Dejar de compartir" : "Compartir cliente"}
+                          aria-label={client.isShared ? "Dejar de compartir cliente" : "Compartir cliente"}
+                          onClick={() => toggleClientSharing(client)}
+                          className={`shrink-0 rounded-xl ${client.isShared ? "text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800" : "text-[#62718a] hover:bg-[#eaf4ff] hover:text-[#243e87]"}`}
+                        >
+                          <Share2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {isClientOwner(client) && (
+                        <Button variant="ghost" size="icon" onClick={() => deleteClient(client.id)} className="shrink-0 rounded-xl text-[#62718a] hover:bg-red-500/10 hover:text-red-300"><Trash2 className="h-4 w-4" /></Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1373,10 +1582,12 @@ if (passwordRecovery) {
                           {config.type === "Fiori" && <span className="text-lg font-semibold text-[#182b56]">Fiori {config.environment}</span>}
                           {config.type === "Enlaces" && <span className="text-lg font-semibold text-[#182b56]">Enlaces</span>}
                         </div>
-                        <div className="flex shrink-0 flex-wrap gap-2">
-                          <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
-                          <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
-                        </div>
+                        {selectedClientIsEditable && (
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
+                            <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
+                          </div>
+                        )}
                       </div>
                       <ConfigDetails config={config} showPasswords={showPasswords} />
                     </motion.div>
@@ -1389,6 +1600,33 @@ if (passwordRecovery) {
 
         <footer className="pb-4 text-center text-xs text-[#8b98aa]">Desarrollado por Alfredo Pradas. Todos los derechos reservados.</footer>
       </motion.div>
+
+      <Dialog open={confirmDialog.open} onOpenChange={(open) => !open && closeConfirmDialog()}>
+        <DialogContent className="max-w-md rounded-3xl border-[#edf1f6] bg-white p-0 text-[#182b56] shadow-2xl shadow-slate-950/20">
+          <div className="overflow-hidden rounded-3xl">
+            <div className="bg-[#243e87] px-6 py-4 text-white">
+              <DialogTitle className="text-lg font-semibold">{confirmDialog.title || "Confirmar acción"}</DialogTitle>
+              <p className="mt-1 text-sm text-white/75">Revisa la acción antes de continuar.</p>
+            </div>
+            <div className="space-y-5 p-6">
+              <div className="flex gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+                <p className="text-sm leading-relaxed text-[#344767]">{confirmDialog.message}</p>
+              </div>
+              <DialogFooter className="gap-2 sm:gap-2">
+                <Button variant="outline" onClick={closeConfirmDialog} className="rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]">
+                  Cancelar
+                </Button>
+                <Button onClick={handleConfirmDialog} className="rounded-xl bg-red-600 text-white hover:bg-red-700">
+                  {confirmDialog.confirmLabel || "Confirmar"}
+                </Button>
+              </DialogFooter>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto rounded-3xl border-[#edf1f6] bg-white text-[#182b56] shadow-2xl shadow-slate-950">
