@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, LogOut, Copy, Check, Eye, EyeOff, FileDown, Share2, Link2, FileText, FileSpreadsheet, FileImage, FileArchive, File, Presentation } from "lucide-react";
+import { Plus, Pencil, Trash2, ExternalLink, Search, Server, Shield, KeyRound, Globe2, Building2, LogOut, Copy, Check, Eye, EyeOff, FileDown, Share2, Mail, Link2, FileText, FileSpreadsheet, FileImage, FileArchive, File, Presentation } from "lucide-react";
 
 const CONNECTION_TYPES = ["VPN", "SAP", "OSS", "Fiori", "Enlaces"];
 const FIORI_ENVIRONMENTS = ["DES", "QA", "PRD"];
@@ -151,6 +151,18 @@ function buildPdfRowsForConfig(config, showPasswords) {
   }
 
   return [["Datos", JSON.stringify(config, null, 2)]];
+}
+
+function buildChangeNotificationRows(config) {
+  return buildPdfRowsForConfig(config, false).map(([label, value]) => `${label}: ${normalizePdfValue(value)}`);
+}
+
+function getConfigTitle(config) {
+  if (config.type === "SAP") return config.description || "Sistema SAP";
+  if (config.type === "VPN") return config.vpnName || "VPN sin nombre";
+  if (config.type === "Fiori") return `Fiori ${config.environment || ""}`.trim();
+  if (config.type === "Enlaces") return "Enlaces";
+  return config.type || "Configuración";
 }
 
 async function invokeCryptoFunction(action, configs) {
@@ -752,20 +764,16 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
     setAppInfoKey(Date.now());
   };
 
-  const openConfirmDialog = ({ title, message, confirmLabel = "Confirmar", variant = "danger", onConfirm }) => {
-    setConfirmDialog({ open: true, title, message, confirmLabel, variant, onConfirm });
+  const openConfirmDialog = ({ title, message, confirmLabel = "Confirmar", onConfirm }) => {
+    setConfirmDialog({ open: true, title, message, confirmLabel, onConfirm });
   };
 
-  const closeConfirmDialog = () => {
-    setConfirmDialog({ open: false });
-  };
+  const closeConfirmDialog = () => setConfirmDialog({ open: false });
 
   const handleConfirmDialog = async () => {
     const onConfirm = confirmDialog.onConfirm;
     closeConfirmDialog();
-    if (typeof onConfirm === "function") {
-      await onConfirm();
-    }
+    if (typeof onConfirm === "function") await onConfirm();
   };
 
   useEffect(() => {
@@ -899,6 +907,7 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   const isClientOwner = (client) => !client?.userId || client.userId === session?.user?.id;
   const selectedClientIsEditable = Boolean(selectedClient && isClientOwner(selectedClient));
+  const selectedClientIsSharedByOtherUser = Boolean(selectedClient?.isShared && !isClientOwner(selectedClient));
 
   const clientCardClass = (client) => {
     const selected = selectedClientId === client.id;
@@ -1011,7 +1020,6 @@ const [recoveryLoading, setRecoveryLoading] = useState(false);
       title: "Borrar cliente",
       message: `¿Seguro que quieres borrar el cliente "${clientToDelete?.name || "seleccionado"}" y todas sus configuraciones? Esta acción no se puede deshacer.`,
       confirmLabel: "Borrar cliente",
-      variant: "danger",
       onConfirm: async () => {
         const { error } = await supabase.from(CLIENTS_TABLE).delete().eq("id", clientId);
         if (error) {
@@ -1077,6 +1085,40 @@ const openCreateDialog = () => {
     setDialogOpen(true);
   };
 
+  const notifyConfigChange = (config) => {
+    if (!selectedClient || !selectedClientIsSharedByOtherUser) return;
+
+    const recipient = selectedClient.sharedByEmail || "";
+    const configTitle = getConfigTitle(config);
+    const subject = `Solicitud de cambio - Cliente ${selectedClient.name} - ${config.type}`;
+    const bodyLines = [
+      "Hola,",
+      "",
+      "Quiero notificar un cambio sobre la siguiente configuración compartida:",
+      "",
+      `Cliente: ${selectedClient.name}`,
+      `Tipo de conexión: ${config.type}`,
+      `Configuración: ${configTitle}`,
+      "",
+      "Datos actuales de la conexión:",
+      "----------------------------------------",
+      ...buildChangeNotificationRows(config),
+      "",
+      "Cambio solicitado:",
+      "----------------------------------------",
+      "Campo a modificar:",
+      "Valor actual:",
+      "Nuevo valor propuesto:",
+      "Motivo del cambio:",
+      "Prioridad:",
+      "Observaciones adicionales:",
+      "",
+      "Gracias.",
+    ];
+
+    window.location.href = `mailto:${encodeURIComponent(recipient)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyLines.join("\n"))}`;
+  };
+
   const openEditDialog = (config) => {
     setEditingConfig(config);
     setSelectedType(config.type);
@@ -1129,17 +1171,12 @@ const openCreateDialog = () => {
     setAppInfo("");
 
     const configToDelete = selectedClient.configs.find((config) => config.id === configId);
-    const configName =
-      configToDelete?.type === "SAP" ? configToDelete.description || "SAP" :
-      configToDelete?.type === "VPN" ? configToDelete.vpnName || "VPN" :
-      configToDelete?.type === "Fiori" ? `Fiori ${configToDelete.environment || ""}`.trim() :
-      configToDelete?.type || "configuración";
+    const configName = getConfigTitle(configToDelete || {});
 
     openConfirmDialog({
       title: "Borrar configuración",
       message: `¿Seguro que quieres borrar la configuración "${configName}" del cliente "${selectedClient.name}"? Esta acción no se puede deshacer.`,
       confirmLabel: "Borrar configuración",
-      variant: "danger",
       onConfirm: async () => {
         try {
           const nextConfigs = selectedClient.configs.filter((config) => config.id !== configId);
@@ -1451,12 +1488,7 @@ if (passwordRecovery) {
                   <div className="mt-0.5 text-sm leading-relaxed text-[#344767]">{appInfo}</div>
                 </div>
               </div>
-              <motion.div
-                initial={{ width: "100%" }}
-                animate={{ width: "0%" }}
-                transition={{ duration: 4.5, ease: "linear" }}
-                className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600"
-              />
+              <motion.div initial={{ width: "100%" }} animate={{ width: "0%" }} transition={{ duration: 4.5, ease: "linear" }} className="h-1 bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600" />
             </motion.div>
           )}
         </AnimatePresence>
@@ -1493,14 +1525,7 @@ if (passwordRecovery) {
                         </div>
                       </button>
                       {isClientOwner(client) && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          title={client.isShared ? "Dejar de compartir" : "Compartir cliente"}
-                          aria-label={client.isShared ? "Dejar de compartir cliente" : "Compartir cliente"}
-                          onClick={() => toggleClientSharing(client)}
-                          className={`shrink-0 rounded-xl ${client.isShared ? "text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800" : "text-[#62718a] hover:bg-[#eaf4ff] hover:text-[#243e87]"}`}
-                        >
+                        <Button variant="ghost" size="icon" title={client.isShared ? "Dejar de compartir" : "Compartir cliente"} aria-label={client.isShared ? "Dejar de compartir cliente" : "Compartir cliente"} onClick={() => toggleClientSharing(client)} className={`shrink-0 rounded-xl ${client.isShared ? "text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800" : "text-[#62718a] hover:bg-[#eaf4ff] hover:text-[#243e87]"}`}>
                           <Share2 className="h-4 w-4" />
                         </Button>
                       )}
@@ -1582,12 +1607,19 @@ if (passwordRecovery) {
                           {config.type === "Fiori" && <span className="text-lg font-semibold text-[#182b56]">Fiori {config.environment}</span>}
                           {config.type === "Enlaces" && <span className="text-lg font-semibold text-[#182b56]">Enlaces</span>}
                         </div>
-                        {selectedClientIsEditable && (
-                          <div className="flex shrink-0 flex-wrap gap-2">
-                            <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
-                            <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
-                          </div>
-                        )}
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {selectedClientIsSharedByOtherUser && (
+                            <Button variant="outline" size="sm" onClick={() => notifyConfigChange(config)} className="rounded-xl border-red-400/60 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-800">
+                              <Mail className="mr-2 h-4 w-4" /> Notificar cambio
+                            </Button>
+                          )}
+                          {selectedClientIsEditable && (
+                            <>
+                              <Button variant="outline" size="sm" onClick={() => openEditDialog(config)} className="rounded-xl border-[#67aef7]/60 bg-white text-[#243e87] hover:bg-[#2d4a9a]/10 hover:text-[#243e87]"><Pencil className="mr-2 h-4 w-4" /> Editar</Button>
+                              <Button variant="outline" size="sm" onClick={() => deleteConfig(config.id)} className="rounded-xl border-red-400/40 bg-white text-red-300 hover:bg-red-500/10 hover:text-red-200"><Trash2 className="mr-2 h-4 w-4" /> Borrar</Button>
+                            </>
+                          )}
+                        </div>
                       </div>
                       <ConfigDetails config={config} showPasswords={showPasswords} />
                     </motion.div>
@@ -1616,12 +1648,8 @@ if (passwordRecovery) {
                 <p className="text-sm leading-relaxed text-[#344767]">{confirmDialog.message}</p>
               </div>
               <DialogFooter className="gap-2 sm:gap-2">
-                <Button variant="outline" onClick={closeConfirmDialog} className="rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]">
-                  Cancelar
-                </Button>
-                <Button onClick={handleConfirmDialog} className="rounded-xl bg-red-600 text-white hover:bg-red-700">
-                  {confirmDialog.confirmLabel || "Confirmar"}
-                </Button>
+                <Button variant="outline" onClick={closeConfirmDialog} className="rounded-xl border-[#dce2ea] bg-white text-[#243e87] hover:bg-[#f4f9ff]">Cancelar</Button>
+                <Button onClick={handleConfirmDialog} className="rounded-xl bg-red-600 text-white hover:bg-red-700">{confirmDialog.confirmLabel || "Confirmar"}</Button>
               </DialogFooter>
             </div>
           </div>
